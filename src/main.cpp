@@ -15,6 +15,7 @@
 
 // Timing
 float previousTime = 0, deltaTime = 0, currentTime = 0;
+int printCount = 0;
 
 // IMU
 int16_t rawGyroX = 0,  rawGyroY = 0,  rawGyroZ = 0;
@@ -61,12 +62,12 @@ float altitudePID  = 0;
 int motorMatrix[4] = {0, 0, 0, 0};
 
 // PID controllers
-PIDController rollAngleController (0.5, 0.0, 0.0, 0.55, 0);
-PIDController pitchAngleController(0.5, 0.0, 0.0, 0.55, 0);
-PIDController rollRateController  (0.1, 0.1, 0.1, 0.55, 0);
-PIDController pitchRateController (0.1, 0.1, 0.1, 0.55, 0);
-PIDController yawRateController   (0.1, 0.1, 0.1, 0.55, 0);
-PIDController altitudeController  (0.1, 0.1, 0.1, 0.0,  0);
+PIDController rollAngleController (1, 0.0, 0.0, 0);
+PIDController pitchAngleController(1, 0.0, 0.0, 0);
+PIDController rollRateController  (0.224, 0.7923, 0.0019, 0);
+PIDController pitchRateController (0.224, 0.7923, 0.0019, 0);
+PIDController yawRateController   (0.2689, 0.5704, 0.0038, 0);
+PIDController altitudeController  (0.1, 0.1, 0.1, 0);
 
 // ============================================================
 //  Helper functions
@@ -93,15 +94,24 @@ void update()
     previousTime = currentTime;
 
     updateIMUReadings();
+    // Serial.printf("pitch: %.2f, roll: %.2f, yaw: %.2f\n", pitch, roll, yaw);
+    // Serial.printf("pitch: %.2f, roll: %.2f ", pitch, roll);
+    // Serial.printf("%.2f,%.2f,%.2f\n", pitch, roll, yaw);
     updateAltitudeReadings();
+    if (currentTime > printCount * 1000000) {
+        Serial.printf("%i: ", printCount);
+        Serial.printf("Altitude: %.2f\n", altitude);
+        printCount++;
+    }
     getChannelPacket();
     sendAltitudePacket();
     sendAttitudePacket();
     sendBatteryPacket();
 
+
     // Only handle web clients when upper-right switch is up
-    if (channels.ch[7].data > 1200)
-    {
+    // if (channels.ch[7].data > 1200)
+    // {
         static uint32_t lastWebHandle = 0;
         uint32_t now = micros();
         if (now - lastWebHandle > 10000)
@@ -109,7 +119,7 @@ void update()
             server.handleClient();
             lastWebHandle = now;
         }
-    }
+    // }
 }
 
 // ============================================================
@@ -118,11 +128,11 @@ void update()
 
 void setup()
 {
-    Serial.begin(115200);
+    Serial.begin(460800);
     Serial1.begin(bRate, SERIAL_8N1, Rx, Tx);
     delay(2000);
 
-    Serial.printf("Started Serial1 at %i baud\n", bRate);
+    // Serial.printf("Started Serial1 at %i baud\n", bRate);
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, i2cSpeed);
     delay(100);
 
@@ -134,7 +144,7 @@ void setup()
 
     ICM45686_Init();
 
-    channels.setDutyCycle(PWMFrequency, PWMResolution);
+    // channels.setDutyCycle(PWMFrequency, PWMResolution);
 
     ledcSetup(frontLeft,  PWMFrequency, PWMResolution);
     ledcSetup(frontRight, PWMFrequency, PWMResolution);
@@ -155,7 +165,7 @@ void setup()
     analogSetPinAttenuation(batteryADCPin, ADC_11db);
 
     PIDWebPage();
-    Serial.println("EXITING SETUP");
+    // Serial.println("EXITING SETUP");
     previousTime = micros();
 }
 

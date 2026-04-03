@@ -2,42 +2,42 @@
 
 void initBMP388()
 {
-    Serial.println("1");
+    // Serial.println("1");
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1B);  // PWR CONTROL REGISTER
     Wire.write(0x00);  // SET TO SLEEP MODE and ENABLE TEMP AND PRESSURE SENSORS
     Wire.endTransmission();
     delay(20);
 
-    Serial.println("2");
+    // Serial.println("2");
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1C);  // OVER SAMPLING RESOLUTION REGISTER (osr_p and t)
     Wire.write(0x03);  // SETTING THE TEMP RESOLUTION TO x1 AND PRESSURE TO x8
     Wire.endTransmission();
     delay(20);
 
-    Serial.println("3");
+    // Serial.println("3");
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1D);  // Oversampling register config
     Wire.write(0x02);  // setting the sampling period to 20ms
     Wire.endTransmission();
     delay(20);
 
-    Serial.println("4");
+    // Serial.println("4");
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1F);  // IIR FILTER REGISTER CONFIG
     Wire.write(0x04);  // SET IIR COEFFICENT TO 3
     Wire.endTransmission();
     delay(20);
 
-    Serial.println("5");
+    // Serial.println("5");
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1B);  // PWR CONTROL REGISTER
     Wire.write(0x33);  // SET TO NORMAL MODE and ENABLE TEMP AND PRESSURE SENSORS
     Wire.endTransmission();
     delay(20);
 
-    Serial.println("I WILL GET COMPENSATION DATA");
+    // Serial.println("I WILL GET COMPENSATION DATA");
     getCompensationData();
     delay(20);
 }
@@ -71,10 +71,10 @@ void getCompensationData()
     Wire.requestFrom(BMP388ADDRESS, 21);
     delay(500);
 
-    Serial.println("I AM ABOUT TO READ");
+    // Serial.println("I AM ABOUT TO READ");
     if (Wire.available() == 21)
     {
-        Serial.println("I AM READING");
+        // Serial.println("I AM READING");
         NVM_PAR_T1 = Wire.read() | (Wire.read() << 8);
         NVM_PAR_T2 = Wire.read() | (Wire.read() << 8);
         NVM_PAR_T3 = (int8_t)Wire.read();

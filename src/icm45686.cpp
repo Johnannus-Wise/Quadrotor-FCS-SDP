@@ -9,18 +9,18 @@ void ICM45686_Init()
 
     if (Wire.available() == 1)
     {
-        Serial.printf("The WHO AM I reads: %X\n", Wire.read());
+        // Serial.printf("The WHO AM I reads: %X\n", Wire.read());
     }
     delay(10);
 
     I2CWriteIREG(0xA6, 0xA400, 0x20);  // Enabling gyro AAF, Disabling interpolator
     delay(10);
-    Serial.printf("The data written at 0xA6 is: 0x%X \n", I2CReadIREG(0xA6, 0xA400));
+    // Serial.printf("The data written at 0xA6 is: 0x%X \n", I2CReadIREG(0xA6, 0xA400));
     delay(10);
 
     I2CWriteIREG(0x7B, 0xA400, 0x01);  // Enabling accel AAF, Disabling interpolator
     delay(10);
-    Serial.printf("The data written at 0x7B is: 0x%X \n", I2CReadIREG(0x7B, 0xA400));
+    // Serial.printf("The data written at 0x7B is: 0x%X \n", I2CReadIREG(0x7B, 0xA400));
     delay(10);
 
     Wire.beginTransmission(ICMAddress);

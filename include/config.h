@@ -33,10 +33,10 @@ extern const char *password;
 #define bRate 416666    //CRSF baud rate
 
 // ===== Motor / PWM pins =====
-#define frontLeftPin  25
-#define frontRightPin 33
-#define rearRightPin  32
-#define rearLeftPin   26
+#define frontLeftPin  32    //M1 Green Wire
+#define frontRightPin 25    //M2 Red Wire
+#define rearRightPin  26    //M3 Orange Wire
+#define rearLeftPin   33    //M4 Yellow Wire
 #define frontLeft     1
 #define frontRight    2
 #define rearRight     3
@@ -48,7 +48,7 @@ extern const char *password;
 #define PWMRange      pow(2.0, PWMResolution)
 #define signalMax     1811              //max raw signal value
 #define signalMin     174               //min raw signal value
-#define minThrottleRequirement 0.55    //10% Throttle
+#define minThrottleRequirement 0.525    //5% Throttle
 #define maxMainThrottleAllowed 0.9      //80% Throttle
 
 // ===== Flight limits =====
@@ -56,8 +56,8 @@ extern const char *password;
 #define yawSpeedMax       90
 #define minAltitude       0
 #define maxAltitude       30
-#define maxThrottleValue  2047  //100% Throttle
-#define minThrottleValue  1023  //0% Throttle
+#define maxThrottleValue  PWMRange - 1  //100% Throttle
+#define minThrottleValue  (PWMRange/2) - 1  //0% Throttle
 
 // ===== Battery =====
 #define batteryADCPin      36
@@ -87,16 +87,16 @@ struct PIDController
     float integralTerm           = 0;
     float derivativeTermRaw      = 0;
     float derivativeTermFiltered = 0;
-    float integralStartPoint     = 0.55;
+    // float integralStartPoint     = 0.55;
     float PID_output             = 0;
     float maxActuatorOutput      = maxThrottleValue;
 
-    PIDController(float kp, float ki, float kd, float iStPt, float tol)
+    PIDController(float kp, float ki, float kd, float tol)
     {
         Kp                = kp;
         Ki                = ki;
         Kd                = kd;
-        integralStartPoint = iStPt;
+        // integralStartPoint = iStPt;
         tolerance         = tol;
     }
 
@@ -109,10 +109,7 @@ struct PIDController
             derivativeTermFiltered = derivativeFilterAlpha * derivativeTermFiltered
                                    + (1.0 - derivativeFilterAlpha) * derivativeTermRaw;
 
-            if (currentActuatorInput > (maxActuatorOutput * integralStartPoint))
-            {
-                integralTerm = integralTerm + error * dt;
-            }
+            integralTerm = integralTerm + error * dt;
 
             PID_output = (Kp * error) + (Ki * integralTerm) + (Kd * derivativeTermFiltered);
         }
