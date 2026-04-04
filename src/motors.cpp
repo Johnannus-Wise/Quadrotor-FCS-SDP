@@ -1,16 +1,18 @@
 #include "motors.h"
 #include "receiver.h"
+#include "globals.h"
+
 bool manualControlled;
-int hoverThrottle = maxThrottleValue * (1.8/4);
+int hoverThrottle = MAX_THROTTLE_VALUE * (1.8/4);
 
 void movement()
 {
     motorMixingAlgorithm(updatePID());
     clampMixedMotors();
-    ledcWrite(frontLeft,  motorMatrix[0]);
-    ledcWrite(frontRight, motorMatrix[1]);
-    ledcWrite(rearRight,  motorMatrix[2]);
-    ledcWrite(rearLeft,   motorMatrix[3]);
+    ledcWrite(FRONT_LEFT,  motorMatrix[0]);
+    ledcWrite(FRONT_RIGHT, motorMatrix[1]);
+    ledcWrite(REAR_RIGHT,  motorMatrix[2]);
+    ledcWrite(REAR_LEFT,   motorMatrix[3]);
 }
 
 //returns true if the mixing is using altitude controller, false if manual throttle
@@ -24,11 +26,11 @@ bool updatePID()
         {
             altitudeLock = false;
         }
-        rollAnglePID  = rollAngleController.compute(desiredRoll,  roll,  deltaTime, mainThrottleInput);
-        pitchAnglePID = pitchAngleController.compute(desiredPitch, pitch, deltaTime, mainThrottleInput);
-        rollRatePID   = rollRateController.compute(rollAnglePID,  gyroY, deltaTime, mainThrottleInput);
-        pitchRatePID  = pitchRateController.compute(pitchAnglePID, gyroX, deltaTime, mainThrottleInput);
-        yawRatePID    = yawRateController.compute(yawSpeed,       gyroZ, deltaTime, mainThrottleInput);
+        rollAnglePID  = rollAngleController.compute(desiredRoll,  roll,  deltaTime);
+        pitchAnglePID = pitchAngleController.compute(desiredPitch, pitch, deltaTime);
+        rollRatePID   = rollRateController.compute(rollAnglePID,  gyroY, deltaTime);
+        pitchRatePID  = pitchRateController.compute(pitchAnglePID, gyroX, deltaTime);
+        yawRatePID    = yawRateController.compute(yawSpeed,       gyroZ, deltaTime);
         manualControlled = true;
         return false;
     }
@@ -40,12 +42,12 @@ bool updatePID()
         {
             altitudeLock = false;
         }
-        rollAnglePID  = rollAngleController.compute(desiredRoll,    roll,     deltaTime, mainThrottleInput);
-        pitchAnglePID = pitchAngleController.compute(desiredPitch,  pitch,    deltaTime, mainThrottleInput);
-        rollRatePID   = rollRateController.compute(rollAnglePID,    gyroY,    deltaTime, mainThrottleInput);
-        pitchRatePID  = pitchRateController.compute(pitchAnglePID,  gyroX,    deltaTime, mainThrottleInput);
-        yawRatePID    = yawRateController.compute(yawSpeed,         gyroZ,    deltaTime, mainThrottleInput);
-        altitudePID   = altitudeController.compute(desiredAltitude, altitude, deltaTime, mainThrottleInput);
+        rollAnglePID  = rollAngleController.compute(desiredRoll,    roll,     deltaTime);
+        pitchAnglePID = pitchAngleController.compute(desiredPitch,  pitch,    deltaTime);
+        rollRatePID   = rollRateController.compute(rollAnglePID,    gyroY,    deltaTime);
+        pitchRatePID  = pitchRateController.compute(pitchAnglePID,  gyroX,    deltaTime);
+        yawRatePID    = yawRateController.compute(yawSpeed,         gyroZ,    deltaTime);
+        altitudePID   = altitudeController.compute(desiredAltitude, altitude, deltaTime);
         manualControlled = false;
         return true;
     }
@@ -58,12 +60,12 @@ bool updatePID()
             hoverAltitude = altitude;
             altitudeLock  = true;
         }
-        rollAnglePID  = rollAngleController.compute(desiredRoll,   roll,          deltaTime, mainThrottleInput);
-        pitchAnglePID = pitchAngleController.compute(desiredPitch, pitch,         deltaTime, mainThrottleInput);
-        rollRatePID   = rollRateController.compute(rollAnglePID,   gyroY,         deltaTime, mainThrottleInput);
-        pitchRatePID  = pitchRateController.compute(pitchAnglePID, gyroX,         deltaTime, mainThrottleInput);
-        yawRatePID    = yawRateController.compute(yawSpeed,        gyroZ,         deltaTime, mainThrottleInput);
-        altitudePID   = altitudeController.compute(hoverAltitude,  altitude,      deltaTime, mainThrottleInput);
+        rollAnglePID  = rollAngleController.compute(desiredRoll,   roll,          deltaTime);
+        pitchAnglePID = pitchAngleController.compute(desiredPitch, pitch,         deltaTime);
+        rollRatePID   = rollRateController.compute(rollAnglePID,   gyroY,         deltaTime);
+        pitchRatePID  = pitchRateController.compute(pitchAnglePID, gyroX,         deltaTime);
+        yawRatePID    = yawRateController.compute(yawSpeed,        gyroZ,         deltaTime);
+        altitudePID   = altitudeController.compute(hoverAltitude,  altitude,      deltaTime);
         manualControlled = false;
         return true;
     }
@@ -72,13 +74,13 @@ bool updatePID()
 void motorMixingAlgorithm(bool altitudeControlled)
 {
     if (!altitudeControlled) {
-        //if greater than 80% throttle
-        if (mainThrottleInput > maxThrottleValue * maxMainThrottleAllowed) {
-            mainThrottleInput = maxThrottleValue * maxMainThrottleAllowed;
+        //if greater than 80% throttle clamp to 80%
+        if (mainThrottleInput > MAX_THROTTLE_VALUE * MAX_THROTTLE_FRAC) {
+            mainThrottleInput = MAX_THROTTLE_VALUE * MAX_THROTTLE_FRAC;
         }
 
         //if greater than 5% throttle use the PID controllers
-        if (mainThrottleInput > maxThrottleValue * minThrottleRequirement) {
+        if (mainThrottleInput > MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC) {
             motorMatrix[0] = mainThrottleInput + pitchRatePID + rollRatePID  - yawRatePID;
             motorMatrix[1] = mainThrottleInput + pitchRatePID - rollRatePID  + yawRatePID;
             motorMatrix[2] = mainThrottleInput - pitchRatePID - rollRatePID  - yawRatePID;
@@ -86,8 +88,8 @@ void motorMixingAlgorithm(bool altitudeControlled)
             for (int i = 0; i < 4; i++)
             {
                 //if after mixing the motors would be slower than 5%, then clamp the motors to 5%
-                if (motorMatrix[i] < (maxThrottleValue * minThrottleRequirement)) {
-                    motorMatrix[i] = maxThrottleValue * minThrottleRequirement;
+                if (motorMatrix[i] < (MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC)) {
+                    motorMatrix[i] = MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC;
                 }
                 
             }
@@ -106,30 +108,32 @@ void motorMixingAlgorithm(bool altitudeControlled)
         // Floor motors at 55% of PWM range when throttle is above 10%
         for (int i = 0; i < 4; i++)
         {
-            if (motorMatrix[i] < maxThrottleValue * minThrottleRequirement && mainThrottleInput > maxThrottleValue * minThrottleRequirement)
+            if (motorMatrix[i] < MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC && mainThrottleInput > MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC)
             {
-                motorMatrix[i] = maxThrottleValue * minThrottleRequirement;
+                motorMatrix[i] = MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC;
             }
         }
     }
     else
     {
         anti_Windup();
-        if (altitudePID > maxThrottleValue * maxMainThrottleAllowed)
+        if (altitudePID > MAX_THROTTLE_VALUE * MAX_THROTTLE_FRAC)
         {
-            altitudePID = maxThrottleValue * maxMainThrottleAllowed;
+            altitudePID = MAX_THROTTLE_VALUE * MAX_THROTTLE_FRAC;
         }
-        if (altitudePID >= (hoverThrottle))
-        motorMatrix[0] = altitudePID + pitchRatePID + rollRatePID  - yawRatePID;
-        motorMatrix[1] = altitudePID + pitchRatePID - rollRatePID  + yawRatePID;
-        motorMatrix[2] = altitudePID - pitchRatePID - rollRatePID  - yawRatePID;
-        motorMatrix[3] = altitudePID - pitchRatePID + rollRatePID  + yawRatePID;
+        if (altitudePID >= (hoverThrottle)) {
+            motorMatrix[0] = altitudePID + pitchRatePID + rollRatePID  - yawRatePID;
+            motorMatrix[1] = altitudePID + pitchRatePID - rollRatePID  + yawRatePID;
+            motorMatrix[2] = altitudePID - pitchRatePID - rollRatePID  - yawRatePID;
+            motorMatrix[3] = altitudePID - pitchRatePID + rollRatePID  + yawRatePID;
+        }
+
     }
 }
 
 void anti_Windup()
 {
-    if (altitudePID > maxMainThrottleAllowed * maxThrottleValue && altitudePID * altitudeController.error > 0)
+    if (altitudePID > MAX_THROTTLE_VALUE * MAX_THROTTLE_FRAC && altitudePID * altitudeController.error > 0)
     {
         altitudePID = altitudeController.unwind(deltaTime);
     }
@@ -139,13 +143,13 @@ void clampMixedMotors()
 {
     for (int i = 0; i < 4; i++)
     {
-        if (motorMatrix[i] > maxThrottleValue) motorMatrix[i] = maxThrottleValue;
-        if (manualControlled && (motorMatrix[i] < maxThrottleValue * minThrottleRequirement) && mainThrottleInput >= maxThrottleValue * minThrottleRequirement) {
-            motorMatrix[i] = maxThrottleValue * minThrottleRequirement;
+        if (motorMatrix[i] > MAX_THROTTLE_VALUE) motorMatrix[i] = MAX_THROTTLE_VALUE;
+        if (manualControlled && (motorMatrix[i] < MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC) && mainThrottleInput >= MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC) {
+            motorMatrix[i] = MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC;
             // Serial.printf("Condition1\n");
         } 
-        else if (motorMatrix[i] < minThrottleValue) {
-            motorMatrix[i] = minThrottleValue;
+        else if (motorMatrix[i] < MIN_THROTTLE_VALUE) {
+            motorMatrix[i] = MIN_THROTTLE_VALUE;
             // Serial.printf("Condition2\n");
         }
     }

@@ -1,5 +1,5 @@
 #pragma once
-#include "config.h"
+#include "globals.h"
 #include <WebServer.h>
 
 extern WebServer server;

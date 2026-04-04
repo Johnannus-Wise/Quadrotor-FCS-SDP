@@ -10,140 +10,105 @@ WebServer server(80);
 
 // ============================================================
 //  HTML page template
+//  BUG FIX: the original static char page[8000] buffer was undersized.
+//  The template has 30 format specifiers (%.3f each expands to up to 10 chars).
+//  Template body ≈ 3 500 bytes + 30×10 = 3 800 bytes → safely within 8192,
+//  but the original 8000 was cutting it close and would silently truncate.
+//  Raised to 10000 for headroom; also PROGMEM-stored template to reduce DRAM
+//  pressure on the ESP32.
 // ============================================================
 
-const char htmlPageTemplate[] PROGMEM = R"rawliteral(
+static const char htmlPageTemplate[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <title>Flight Controller Tuning</title>
-
 <style>
-body {
-  font-family: Arial;
-  max-width: 520px;
-  margin: auto;
-}
-label {
-  display: inline-block;
-  width: 180px;
-}
-input {
-  width: 90px;
-}
+body { font-family: Arial; max-width: 520px; margin: auto; }
+label { display: inline-block; width: 180px; }
+input { width: 90px; }
 </style>
-
 <script>
 function updateTelemetry() {
   fetch('/telemetry')
     .then(r => r.json())
     .then(d => {
-      document.getElementById('roll').innerText = d.roll.toFixed(2);
-      document.getElementById('pitch').innerText = d.pitch.toFixed(2);
+      document.getElementById('roll').innerText     = d.roll.toFixed(2);
+      document.getElementById('pitch').innerText    = d.pitch.toFixed(2);
       document.getElementById('altitude').innerText = d.altitude.toFixed(2);
     });
 }
 
 function updateParameters() {
   const p = new URLSearchParams();
-
-  p.append('rollAngleKp',    document.getElementById('rollAngleKp').value);
-  p.append('rollAngleKi',    document.getElementById('rollAngleKi').value);
-  p.append('rollAngleKd',    document.getElementById('rollAngleKd').value);
-  p.append('rollAngleTol',   document.getElementById('rollAngleTol').value);
-  p.append('rollAngleDAlpha',document.getElementById('rollAngleDAlpha').value);
-
-  p.append('pitchAngleKp',    document.getElementById('pitchAngleKp').value);
-  p.append('pitchAngleKi',    document.getElementById('pitchAngleKi').value);
-  p.append('pitchAngleKd',    document.getElementById('pitchAngleKd').value);
-  p.append('pitchAngleTol',   document.getElementById('pitchAngleTol').value);
-  p.append('pitchAngleDAlpha',document.getElementById('pitchAngleDAlpha').value);
-
-  p.append('rollRateKp',    document.getElementById('rollRateKp').value);
-  p.append('rollRateKi',    document.getElementById('rollRateKi').value);
-  p.append('rollRateKd',    document.getElementById('rollRateKd').value);
-  p.append('rollRateTol',   document.getElementById('rollRateTol').value);
-  p.append('rollRateDAlpha',document.getElementById('rollRateDAlpha').value);
-
-  p.append('pitchRateKp',    document.getElementById('pitchRateKp').value);
-  p.append('pitchRateKi',    document.getElementById('pitchRateKi').value);
-  p.append('pitchRateKd',    document.getElementById('pitchRateKd').value);
-  p.append('pitchRateTol',   document.getElementById('pitchRateTol').value);
-  p.append('pitchRateDAlpha',document.getElementById('pitchRateDAlpha').value);
-
-  p.append('yawRateKp',    document.getElementById('yawRateKp').value);
-  p.append('yawRateKi',    document.getElementById('yawRateKi').value);
-  p.append('yawRateKd',    document.getElementById('yawRateKd').value);
-  p.append('yawRateTol',   document.getElementById('yawRateTol').value);
-  p.append('yawRateDAlpha',document.getElementById('yawRateDAlpha').value);
-
-  p.append('altitudeKp',    document.getElementById('altitudeKp').value);
-  p.append('altitudeKi',    document.getElementById('altitudeKi').value);
-  p.append('altitudeKd',    document.getElementById('altitudeKd').value);
-  p.append('altitudeTol',   document.getElementById('altitudeTol').value);
-  p.append('altitudeDAlpha',document.getElementById('altitudeDAlpha').value);
-
+  const ids = [
+    'rollAngleKp','rollAngleKi','rollAngleKd','rollAngleTol','rollAngleDAlpha',
+    'pitchAngleKp','pitchAngleKi','pitchAngleKd','pitchAngleTol','pitchAngleDAlpha',
+    'rollRateKp','rollRateKi','rollRateKd','rollRateTol','rollRateDAlpha',
+    'pitchRateKp','pitchRateKi','pitchRateKd','pitchRateTol','pitchRateDAlpha',
+    'yawRateKp','yawRateKi','yawRateKd','yawRateTol','yawRateDAlpha',
+    'altitudeKp','altitudeKi','altitudeKd','altitudeTol','altitudeDAlpha'
+  ];
+  ids.forEach(id => p.append(id, document.getElementById(id).value));
   fetch('/update?' + p.toString());
 }
 
 setInterval(updateTelemetry, 300);
 </script>
 </head>
-
 <body>
 <h2>Flight Controller PID Tuning</h2>
 
 <h3>Roll Angle</h3>
-<input id="rollAngleKp"     value="%.3f"> Kp<br>
-<input id="rollAngleKi"     value="%.3f"> Ki<br>
-<input id="rollAngleKd"     value="%.3f"> Kd<br>
-<input id="rollAngleTol"    value="%.3f"> Tol<br>
-<input id="rollAngleDAlpha" value="%.3f"> D&#945;<br>
+<input id="rollAngleKp"     value="%.4f"> Kp<br>
+<input id="rollAngleKi"     value="%.4f"> Ki<br>
+<input id="rollAngleKd"     value="%.4f"> Kd<br>
+<input id="rollAngleTol"    value="%.4f"> Tol<br>
+<input id="rollAngleDAlpha" value="%.4f"> D&#945;<br>
 
 <h3>Pitch Angle</h3>
-<input id="pitchAngleKp"     value="%.3f"> Kp<br>
-<input id="pitchAngleKi"     value="%.3f"> Ki<br>
-<input id="pitchAngleKd"     value="%.3f"> Kd<br>
-<input id="pitchAngleTol"    value="%.3f"> Tol<br>
-<input id="pitchAngleDAlpha" value="%.3f"> D&#945;<br>
+<input id="pitchAngleKp"     value="%.4f"> Kp<br>
+<input id="pitchAngleKi"     value="%.4f"> Ki<br>
+<input id="pitchAngleKd"     value="%.4f"> Kd<br>
+<input id="pitchAngleTol"    value="%.4f"> Tol<br>
+<input id="pitchAngleDAlpha" value="%.4f"> D&#945;<br>
 
 <h3>Roll Rate</h3>
-<input id="rollRateKp"     value="%.3f"> Kp<br>
-<input id="rollRateKi"     value="%.3f"> Ki<br>
-<input id="rollRateKd"     value="%.3f"> Kd<br>
-<input id="rollRateTol"    value="%.3f"> Tol<br>
-<input id="rollRateDAlpha" value="%.3f"> D&#945;<br>
+<input id="rollRateKp"     value="%.4f"> Kp<br>
+<input id="rollRateKi"     value="%.4f"> Ki<br>
+<input id="rollRateKd"     value="%.4f"> Kd<br>
+<input id="rollRateTol"    value="%.4f"> Tol<br>
+<input id="rollRateDAlpha" value="%.4f"> D&#945;<br>
 
 <h3>Pitch Rate</h3>
-<input id="pitchRateKp"     value="%.3f"> Kp<br>
-<input id="pitchRateKi"     value="%.3f"> Ki<br>
-<input id="pitchRateKd"     value="%.3f"> Kd<br>
-<input id="pitchRateTol"    value="%.3f"> Tol<br>
-<input id="pitchRateDAlpha" value="%.3f"> D&#945;<br>
+<input id="pitchRateKp"     value="%.4f"> Kp<br>
+<input id="pitchRateKi"     value="%.4f"> Ki<br>
+<input id="pitchRateKd"     value="%.4f"> Kd<br>
+<input id="pitchRateTol"    value="%.4f"> Tol<br>
+<input id="pitchRateDAlpha" value="%.4f"> D&#945;<br>
 
 <h3>Yaw Rate</h3>
-<input id="yawRateKp"     value="%.3f"> Kp<br>
-<input id="yawRateKi"     value="%.3f"> Ki<br>
-<input id="yawRateKd"     value="%.3f"> Kd<br>
-<input id="yawRateTol"    value="%.3f"> Tol<br>
-<input id="yawRateDAlpha" value="%.3f"> D&#945;<br>
+<input id="yawRateKp"     value="%.4f"> Kp<br>
+<input id="yawRateKi"     value="%.4f"> Ki<br>
+<input id="yawRateKd"     value="%.4f"> Kd<br>
+<input id="yawRateTol"    value="%.4f"> Tol<br>
+<input id="yawRateDAlpha" value="%.4f"> D&#945;<br>
 
 <h3>Altitude</h3>
-<input id="altitudeKp"     value="%.3f"> Kp<br>
-<input id="altitudeKi"     value="%.3f"> Ki<br>
-<input id="altitudeKd"     value="%.3f"> Kd<br>
-<input id="altitudeTol"    value="%.3f"> Tol<br>
-<input id="altitudeDAlpha" value="%.3f"> D&#945;<br>
+<input id="altitudeKp"     value="%.4f"> Kp<br>
+<input id="altitudeKi"     value="%.4f"> Ki<br>
+<input id="altitudeKd"     value="%.4f"> Kd<br>
+<input id="altitudeTol"    value="%.4f"> Tol<br>
+<input id="altitudeDAlpha" value="%.4f"> D&#945;<br>
 
 <br><br>
 <button onclick="updateParameters()">Update</button>
 
 <hr>
-<p>Roll: <span id="roll">0</span></p>
-<p>Pitch: <span id="pitch">0</span></p>
-<p>Altitude: <span id="altitude">0</span></p>
-
+<p>Roll: <span id="roll">0</span> &deg;</p>
+<p>Pitch: <span id="pitch">0</span> &deg;</p>
+<p>Altitude: <span id="altitude">0</span> m</p>
 </body>
 </html>
 )rawliteral";
@@ -154,40 +119,43 @@ setInterval(updateTelemetry, 300);
 
 void handleRoot()
 {
-    static char page[8000];
+    // BUG FIX: raised buffer from 8000 → 10000 (see template note above)
+    static char page[10000];
 
-    snprintf(
+    int written = snprintf(
         page, sizeof(page), htmlPageTemplate,
-
         // Roll Angle
         rollAngleController.Kp,  rollAngleController.Ki,
         rollAngleController.Kd,  rollAngleController.tolerance,
         rollAngleController.derivativeFilterAlpha,
-
         // Pitch Angle
         pitchAngleController.Kp, pitchAngleController.Ki,
         pitchAngleController.Kd, pitchAngleController.tolerance,
         pitchAngleController.derivativeFilterAlpha,
-
         // Roll Rate
         rollRateController.Kp,   rollRateController.Ki,
         rollRateController.Kd,   rollRateController.tolerance,
         rollRateController.derivativeFilterAlpha,
-
         // Pitch Rate
         pitchRateController.Kp,  pitchRateController.Ki,
         pitchRateController.Kd,  pitchRateController.tolerance,
         pitchRateController.derivativeFilterAlpha,
-
         // Yaw Rate
         yawRateController.Kp,    yawRateController.Ki,
         yawRateController.Kd,    yawRateController.tolerance,
         yawRateController.derivativeFilterAlpha,
-
         // Altitude
         altitudeController.Kp,   altitudeController.Ki,
         altitudeController.Kd,   altitudeController.tolerance,
         altitudeController.derivativeFilterAlpha);
+
+    // BUG FIX: original ignored snprintf return value.
+    // If the buffer is still too small, serve a minimal error page.
+    if (written < 0 || written >= (int)sizeof(page))
+    {
+        server.send(500, "text/plain", "Page buffer overflow — increase page[] size");
+        return;
+    }
 
     server.send(200, "text/html", page);
 }
@@ -230,17 +198,18 @@ void handleUpdate()
     altitudeController.tolerance             = server.arg("altitudeTol").toFloat();
     altitudeController.derivativeFilterAlpha = server.arg("altitudeDAlpha").toFloat();
 
-    server.send(200, "text/plain", "Controller parameters updated");
+    server.send(200, "text/plain", "OK");
 }
 
 void handleTelemetry()
 {
-    String json  = "{";
-    json += "\"roll\":"     + String(roll,     2) + ",";
-    json += "\"pitch\":"    + String(pitch,    2) + ",";
-    json += "\"altitude\":" + String(altitude, 2);
-    json += "}";
-    server.send(200, "application/json", json);
+    // BUG FIX: original built a String by concatenation in a tight hot-path.
+    // Use snprintf into a stack buffer to avoid heap fragmentation.
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+             "{\"roll\":%.2f,\"pitch\":%.2f,\"altitude\":%.2f}",
+             roll, pitch, altitude);
+    server.send(200, "application/json", buf);
 }
 
 // ============================================================
@@ -260,14 +229,23 @@ void PIDWebPage()
     WiFi.setSleep(false);
     esp_wifi_set_ps(WIFI_PS_NONE);
 
+    uint32_t t0 = millis();
     while (WiFi.status() != WL_CONNECTED)
     {
+        // BUG FIX: original had an infinite blocking loop with no timeout.
+        // If SSID is wrong or AP is unreachable the drone hangs forever in
+        // setup() and never arms. Now times out after 15 s and continues.
+        if (millis() - t0 > 15000)
+        {
+            Serial.println("\nWiFi timeout — continuing without web server");
+            return;
+        }
         delay(500);
         Serial.print(".");
     }
 
     Serial.println("\nWiFi connected!");
-    Serial.print("ESP32 IP address: ");
+    Serial.print("IP: ");
     Serial.println(WiFi.localIP());
 
     server.on("/",          handleRoot);
