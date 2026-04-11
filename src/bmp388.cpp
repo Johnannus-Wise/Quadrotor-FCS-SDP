@@ -33,8 +33,8 @@
 
 // ODR register (0x1D)
 //   0x00=200Hz … 0x02=50Hz … 0x03=25Hz
-//   x32 pressure requires ≥25 Hz settling; 50 Hz gives headroom.
-#define BMP_ODR_REG_VALUE   0x02    // 50 Hz
+//   x32 pressure resolution updates slower than x8, 25 or 12.5 Hz is too fast for the data to update.
+#define BMP_ODR_REG_VALUE   0x02    // 50Hz
 
 // Software EMA — two cascaded stages
 //   alpha close to 1 → sluggish/smooth; close to 0 → fast/noisy
@@ -80,6 +80,7 @@ static inline float median3(float a, float b, float c)
 
 void initBMP388()
 {
+    // Serial.println(1);
     // BMP388 requires sleep mode before any config register is changed
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1B);   // PWR_CTRL
@@ -87,13 +88,16 @@ void initBMP388()
     Wire.endTransmission();
     delay(20);
 
+    // Serial.println(2);
     // Oversampling: x32 pressure, x1 temperature
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1C);
     Wire.write(BMP_OSR_REG_VALUE);
+    // Wire.write(0x03);
     Wire.endTransmission();
     delay(20);
 
+    // Serial.println(3);
     // Output data rate: 50 Hz
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1D);
@@ -101,6 +105,7 @@ void initBMP388()
     Wire.endTransmission();
     delay(20);
 
+    // Serial.println(4);
     // Hardware IIR filter: coefficient 7
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1F);
@@ -108,6 +113,7 @@ void initBMP388()
     Wire.endTransmission();
     delay(20);
 
+    // Serial.println(5);
     // Normal mode: continuous measurement, both sensors enabled
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x1B);
@@ -115,6 +121,7 @@ void initBMP388()
     Wire.endTransmission();
     delay(20);
 
+    
     getCompensationData();
     delay(20);
 }
@@ -138,6 +145,7 @@ void checkSensorStatus()
 
 void getCompensationData()
 {
+    // Serial.println("Data Compensation:");
     int8_t   NVM_PAR_T3, NVM_PAR_P3, NVM_PAR_P4, NVM_PAR_P7,
              NVM_PAR_P8, NVM_PAR_P10, NVM_PAR_P11;
     int16_t  NVM_PAR_P1, NVM_PAR_P2, NVM_PAR_P9;
@@ -209,6 +217,7 @@ void getCompensationData()
         PAR_P10 = (float)NVM_PAR_P10 / 281474976710656.0f;
         PAR_P11 = (float)NVM_PAR_P11 / 36893488147419103232.0f; // 2^65
     }
+    // Serial.println("Compensation data obtained");
 }
 
 void readTempPres(uint32_t *p, uint32_t *t)
@@ -220,6 +229,7 @@ void readTempPres(uint32_t *p, uint32_t *t)
 
     if (Wire.available() == 6)
     {
+        // Serial.println("Reading temp and pressure...");
         uint8_t b0, b1, b2;
 
         b0 = Wire.read(); b1 = Wire.read(); b2 = Wire.read();
@@ -263,6 +273,7 @@ float BMP388CompensatePressure(uint32_t uncompPressure, float T)
 
 void getInitialPressure(int sampleSize)
 {
+    // Serial.println("Getting initial pressure...");
     // Reset software filter state so arming does not blend stale pre-arm values
     filterSeeded    = false;
     ema1            = 0.0f;
@@ -279,17 +290,25 @@ void getInitialPressure(int sampleSize)
     {
         uint32_t tStart = millis();
         uint8_t  status = 0;
+        //Data ready check loop with 150 ms timeout (should be ~20 ms at 50 Hz ODR + settling time)
         do {
             Wire.beginTransmission(BMP388ADDRESS);
             Wire.write(0x03);
             Wire.endTransmission(false);
             Wire.requestFrom(BMP388ADDRESS, 1);
             status = Wire.read();
-            if (!(status & 0x20)) delay(5);
-        } while (!(status & 0x20) && (millis() - tStart) < 150);
+            if (!(status & 0x20)) {
+                // Serial.println("Waiting for data...");
+                delay(5);
+            } 
+        } while (!(status & 0x20) && (millis() - tStart) < 500);
 
-        if (!(status & 0x20)) continue;  // timed out — skip sample
+        if (!(status & 0x20)) {
+            // Serial.println("Data ready timeout — skipping sample");
+            continue;  // timed out — skip sample
+        }
 
+        // Serial.println("Data ready — reading sample");
         readTempPres(&rawPressure, &rawTemp);
         float t          = BMP388CompensateTemp(rawTemp);
         initialTemp     += t;
@@ -301,11 +320,14 @@ void getInitialPressure(int sampleSize)
     {
         initialPressure /= (float)counter;
         initialTemp     /= (float)counter;
+        Serial.printf("Initial pressure = %.2f Pa | Initial temp = %.2f °C\n", initialPressure, initialTemp);
     }
+    // Serial.println("Initial pressure obtained");
 }
 
 void updateAltitudeReadings()
 {
+    // Serial.println("Updating Altitude...");
     // Gate on pressure-ready flag
     Wire.beginTransmission(BMP388ADDRESS);
     Wire.write(0x03);
@@ -352,4 +374,5 @@ void updateAltitudeReadings()
     }
 
     altitude = altitudeOut;
+    // Serial.println("Altitude updated");
 }

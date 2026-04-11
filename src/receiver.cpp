@@ -131,13 +131,9 @@ uint8_t crc8_d5(const uint8_t *ptr, uint8_t len)
 
 void getChannelPacket()
 {
-    if (!Serial1.available()) return;   // BUG FIX: original called Serial1.read()
-                                        // unconditionally — if no byte was ready it
-                                        // returned -1 (0xFF cast to uint8_t), which
-                                        // could spuriously match CRSF_ADDR (0xC8
-                                        // ≠ 0xFF, so harmless here, but reading
-                                        // without checking wastes cycles and can
-                                        // desync the parser on some UART drivers).
+    // Check data availability before reading
+    if (!Serial1.available()) return;
+
     uint8_t lastRead = Serial1.read();
     if (lastRead != CRSF_ADDR) return;
 

@@ -1,6 +1,12 @@
 #pragma once
 #include <Arduino.h>
 
+// ===== General Definitions =====
+#define SerialBaudRate 460800
+#define GRAVITY         9.80665f
+
+
+
 // ===== Wi-Fi credentials =====
 extern const char *ssid;
 extern const char *password;
@@ -9,13 +15,13 @@ extern const char *password;
 #define BMP388ADDRESS   0x76
 #define I2C_SDA_PIN     21
 #define I2C_SCL_PIN     22
-#define I2C_SPEED       400000      // BUG FIX: was 1000000 (1 MHz). The BMP388
-                                    // I²C fast-mode spec is 400 kHz. 1 MHz is
-                                    // "fast-mode plus" and not guaranteed on all
-                                    // ESP32 silicon / pull-up combinations.
-                                    // 400 kHz is safe and still leaves IMU headroom.
+#define I2C_SPEED       1000000       // BMP388 I²C fast-mode spec is 400 kHz max.
+                                    // 1 MHz is "fast-mode plus" and causes timeout
+                                    // failures on BMP388. 400 kHz is reliable and
+                                    // still leaves ICM-45686 headroom.
+
 #define P0              101325
-#define INIT_SAMPLE_SIZE 200
+#define INIT_SAMPLE_SIZE 100
 
 // ===== ICM-45686 =====
 #define ICM_ADDRESS         0x68

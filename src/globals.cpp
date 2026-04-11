@@ -40,7 +40,7 @@ int16_t  rawBatteryReadings       = 0;
 float    measuredVoltage          = 0.0f;
 float    batteryVoltage           = 0.0f;
 float    batteryPercentUsed       = 0.0f;
-uint32_t batteryCapacityRemaining = 0;
+uint32_t batteryCapacityRemaining = 0;  //mAh
 uint8_t  batteryRemainingPercent  = 0;
 
 // ----- Control references -----

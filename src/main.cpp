@@ -8,6 +8,8 @@
 #include "motors.h"
 #include "wifi_server.h"
 
+int printCounter = 0;
+
 // ============================================================
 //  update — sensor reads, telemetry, web client poll
 //  Called at the top of every loop iteration (armed and disarmed).
@@ -29,6 +31,22 @@ static void update()
     sendAttitudePacket();
     sendBatteryPacket();
 
+    if (currentTime > printCounter * 1000000) {
+        Serial.print(printCounter);
+        Serial.print(">");
+        Serial.print("Altitude:");
+        Serial.print(altitude);
+        Serial.print(",");
+        Serial.print("Pitch:");
+        Serial.print(pitch);
+        Serial.print(",");
+        Serial.print("Roll:");
+        Serial.print(roll);
+        Serial.println();
+        printCounter++;
+    }
+    
+
     // Service web clients at ~100 Hz (every 10 ms) without blocking the loop
     static uint32_t lastWebHandle = 0;
     uint32_t nowUs = (uint32_t)currentTime;
@@ -45,7 +63,7 @@ static void update()
 
 void setup()
 {
-    Serial.begin(460800);
+    Serial.begin(SerialBaudRate);
     Serial1.begin(CRSF_BAUD, SERIAL_8N1, CRSF_RX_PIN, CRSF_TX_PIN);
     delay(2000);
 
