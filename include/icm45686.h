@@ -2,6 +2,14 @@
 #include "globals.h"
 #include <Wire.h>
 
+// ============================================================
+//  Mahony filter state — defined in icm45686.cpp
+//  Exposed here in case other modules need to read the quaternion
+//  directly (e.g. for a 3D visualiser over serial).
+// ============================================================
+extern float q0, q1, q2, q3;
+extern float gyroBiasX, gyroBiasY, gyroBiasZ;
+
 void ICM45686_Init();
 void updateIMUReadings();
 

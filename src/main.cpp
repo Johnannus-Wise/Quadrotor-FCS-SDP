@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include <Wire.h>
 
 #include "globals.h"
@@ -32,17 +31,24 @@ static void update()
     sendBatteryPacket();
 
     if (currentTime > printCounter * 1000000) {
-        Serial.print(printCounter);
+
         Serial.print(">");
+
         Serial.print("Altitude:");
         Serial.print(altitude);
         Serial.print(",");
+
         Serial.print("Pitch:");
         Serial.print(pitch);
         Serial.print(",");
+
         Serial.print("Roll:");
         Serial.print(roll);
-        Serial.println();
+
+        Serial.println(); // Writes \r\n
+
+
+        // Serial.printf("Raw readings: %i, Measured voltage: %.2fV, Battery voltage: %.2fV, Used Percentage: %.2f%%, Remaining Percentage: %i%%\n", rawBatteryReadings, measuredVoltage, batteryVoltage, batteryPercentUsed * 100.0f, batteryRemainingPercent);
         printCounter++;
     }
     

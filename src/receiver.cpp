@@ -218,13 +218,9 @@ void sendAttitudePacket()
 
 void getBatteryValues()
 {
-    rawBatteryReadings = analogRead(BATTERY_ADC_PIN);
+    rawBatteryReadings = analogReadMilliVolts(BATTERY_ADC_PIN);
 
-    // BUG FIX: original formula: (rawBatteryReadings / 4095.0) * Vref + 0.4
-    // The 0.4 V constant is an undocumented magic number and inconsistently
-    // compensates the ADC diode drop.  Replaced with a cleaner ratiometric
-    // formula; the 0.4 V offset is kept as a named constant so it's obvious.
-    const float ADC_DIODE_DROP = 0.4f;
+    const float ADC_DIODE_DROP = 0.928f;    //Calibrated in lab with a multimeter, accounts for the voltage drop across the diode in the voltage divider
     measuredVoltage = ((float)rawBatteryReadings / 4095.0f) * V_REF + ADC_DIODE_DROP;
     batteryVoltage  = measuredVoltage * RESISTANCE_RATIO;
 

@@ -22,18 +22,18 @@
 
 // Hardware IIR coefficient (reg 0x1F)
 //   0x04 = coeff 3 (original) | 0x06 = coeff 7 (better) | 0x0E = coeff 127 (max)
-#define BMP_IIR_REG_VALUE   0x06    // coeff 7 — good balance at 50 Hz ODR
+#define BMP_IIR_REG_VALUE   0x06    // coeff 7
 
 // Oversampling (reg 0x1C): bits[2:0] = pressure, bits[5:3] = temp (shifted)
 //   Pressure: 0x00=x1 … 0x05=x32
-//   x32 pressure: needs ODR ≤ 50 Hz.  Temp x1 keeps measurement time minimal.
-#define BMP_OSR_PRESSURE    0x05    // x32 pressure
+//   x8 pressure: needs ODR ≤ 50 Hz.  Temp x1 keeps measurement time minimal.
+#define BMP_OSR_PRESSURE    0x03    // x8 pressure
 #define BMP_OSR_TEMP        0x00    // x1 temp (no shift needed — bits 5:3 = 0)
 #define BMP_OSR_REG_VALUE   (BMP_OSR_TEMP | BMP_OSR_PRESSURE)
 
 // ODR register (0x1D)
 //   0x00=200Hz … 0x02=50Hz … 0x03=25Hz
-//   x32 pressure resolution updates slower than x8, 25 or 12.5 Hz is too fast for the data to update.
+//   x8 pressure resolution updates works with 50 Hz ODR
 #define BMP_ODR_REG_VALUE   0x02    // 50Hz
 
 // Software EMA — two cascaded stages
@@ -80,48 +80,42 @@ static inline float median3(float a, float b, float c)
 
 void initBMP388()
 {
-    // Serial.println(1);
-    // BMP388 requires sleep mode before any config register is changed
+    // Serial.println("1");
     Wire.beginTransmission(BMP388ADDRESS);
-    Wire.write(0x1B);   // PWR_CTRL
-    Wire.write(0x00);   // sleep, sensors on
+    Wire.write(0x1B);  // PWR CONTROL REGISTER
+    Wire.write(0x00);  // SET TO SLEEP MODE and ENABLE TEMP AND PRESSURE SENSORS
     Wire.endTransmission();
     delay(20);
 
-    // Serial.println(2);
-    // Oversampling: x32 pressure, x1 temperature
+    // Serial.println("2");
     Wire.beginTransmission(BMP388ADDRESS);
-    Wire.write(0x1C);
-    Wire.write(BMP_OSR_REG_VALUE);
-    // Wire.write(0x03);
+    Wire.write(0x1C);  // OVER SAMPLING RESOLUTION REGISTER (osr_p and t)
+    Wire.write(BMP_OSR_PRESSURE);  // SETTING THE TEMP RESOLUTION TO x1 AND PRESSURE TO x8
     Wire.endTransmission();
     delay(20);
 
-    // Serial.println(3);
-    // Output data rate: 50 Hz
+    // Serial.println("3");
     Wire.beginTransmission(BMP388ADDRESS);
-    Wire.write(0x1D);
-    Wire.write(BMP_ODR_REG_VALUE);
+    Wire.write(0x1D);  // Oversampling register config
+    Wire.write(BMP_ODR_REG_VALUE);  // setting the sampling period to 20ms
     Wire.endTransmission();
     delay(20);
 
-    // Serial.println(4);
-    // Hardware IIR filter: coefficient 7
+    // Serial.println("4");
     Wire.beginTransmission(BMP388ADDRESS);
-    Wire.write(0x1F);
-    Wire.write(BMP_IIR_REG_VALUE);
+    Wire.write(0x1F);  // IIR FILTER REGISTER CONFIG
+    Wire.write(BMP_IIR_REG_VALUE);  // SET IIR COEFFICENT TO 7
     Wire.endTransmission();
     delay(20);
 
-    // Serial.println(5);
-    // Normal mode: continuous measurement, both sensors enabled
+    // Serial.println("5");
     Wire.beginTransmission(BMP388ADDRESS);
-    Wire.write(0x1B);
-    Wire.write(0x33);
+    Wire.write(0x1B);  // PWR CONTROL REGISTER
+    Wire.write(0x33);  // SET TO NORMAL MODE and ENABLE TEMP AND PRESSURE SENSORS
     Wire.endTransmission();
     delay(20);
 
-    
+    // Serial.println("I WILL GET COMPENSATION DATA");
     getCompensationData();
     delay(20);
 }
@@ -320,7 +314,7 @@ void getInitialPressure(int sampleSize)
     {
         initialPressure /= (float)counter;
         initialTemp     /= (float)counter;
-        Serial.printf("Initial pressure = %.2f Pa | Initial temp = %.2f °C\n", initialPressure, initialTemp);
+        // Serial.printf("Initial pressure = %.2f Pa | Initial temp = %.2f °C\n", initialPressure, initialTemp);
     }
     // Serial.println("Initial pressure obtained");
 }

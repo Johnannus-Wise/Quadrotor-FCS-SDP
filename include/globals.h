@@ -19,6 +19,7 @@ extern float   gyroX,  gyroY,  gyroZ;
 extern float   accelPitch, accelRoll;
 extern float   pitch, roll, yaw;
 extern float   alphaIMU;
+extern float MAHONY_KP, MAHONY_KI;  // Mahony filter gains
 
 // ----- Barometer -----
 extern float    PAR_T1, PAR_T2, PAR_T3;

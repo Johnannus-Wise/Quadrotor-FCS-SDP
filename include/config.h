@@ -28,6 +28,10 @@ extern const char *password;
 #define ACCEL_SENSITIVITY   8192.0f // BUG FIX: was plain int; used in float division
 #define GYRO_SENSITIVITY    65.536f // BUG FIX: same — use float literal
 
+// Mahony filter state — defined in icm45686.cpp
+extern float q0, q1, q2, q3;          // quaternion components
+extern float gyroBiasX, gyroBiasY, gyroBiasZ;  // estimated gyro bias
+
 // ===== CRSF / Receiver =====
 #define CRSF_ADDR               0xC8
 #define CRSF_SENSOR             0xEA
@@ -70,9 +74,10 @@ extern const char *password;
 
 // ===== Battery =====
 #define BATTERY_ADC_PIN     36
-#define R1                  10000.0f
-#define R2                  1980.0f
+#define R1                  10030.0f
+#define R2                  990.0f
 #define RESISTANCE_RATIO    ((R1 + R2) / R2)
-#define V_REF               2.8f
 #define MAX_BATTERY_VOLTAGE 16.8f
 #define MAX_BATTERY_CAPACITY 10400
+
+extern const float V_REF;   // ADC reference voltage, defined in globals.cpp

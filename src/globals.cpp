@@ -16,9 +16,20 @@ float   accelX = 0.0f, accelY = 0.0f, accelZ = 0.0f;
 float   gyroX  = 0.0f, gyroY  = 0.0f, gyroZ  = 0.0f;
 float   accelPitch = 0.0f, accelRoll = 0.0f;
 float   pitch  = 0.0f, roll = 0.0f, yaw = 0.0f;
-float   alphaIMU = 0.98f;  // BUG FIX: was 0.99 — typical complementary-filter alpha
-                            // for a 3.2 kHz IMU is 0.98–0.995. 0.99 over-weights gyro
-                            // and accumulates significant drift; 0.98 is a safer start.
+float   alphaIMU = 0.98f;  // complementary filter coefficient for IMU angle estimation
+
+// ============================================================
+//  Mahony filter gains — tune on the bench
+//  KP: how aggressively the filter corrects toward the accelerometer.
+//      Too high = accelerometer noise bleeds in during throttle changes.
+//      Too low  = gyro drift builds up between corrections.
+//  KI: how fast the gyro bias is estimated and cancelled.
+//      Keep small. Set to 0 first, add back only if you see slow drift
+//      over 30+ seconds of hover.
+// ============================================================
+
+float MAHONY_KP = 0.5f;
+float MAHONY_KI = 0.5f;
 
 // ----- Barometer -----
 float    PAR_T1 = 0, PAR_T2 = 0, PAR_T3 = 0;
@@ -42,6 +53,7 @@ float    batteryVoltage           = 0.0f;
 float    batteryPercentUsed       = 0.0f;
 uint32_t batteryCapacityRemaining = 0;  //mAh
 uint8_t  batteryRemainingPercent  = 0;
+const float V_REF = (MAX_BATTERY_VOLTAGE - (R1 * MAX_BATTERY_VOLTAGE) / (R2 + R1));  //voltage reference at max battery voltage after voltage divider
 
 // ----- Control references -----
 int desiredPitch = 0, desiredRoll = 0, yawSpeed = 0, desiredAltitude = 0;

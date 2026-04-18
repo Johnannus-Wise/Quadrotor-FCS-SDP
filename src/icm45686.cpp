@@ -1,5 +1,16 @@
 #include "icm45686.h"
 
+// Quaternion — represents current estimated orientation.
+// Initialised as identity (no rotation).
+float q0 = 1.0f, q1 = 0.0f, q2 = 0.0f, q3 = 0.0f;
+
+// Accumulated gyro bias estimates (rad/s).
+// The integral term of the PI controller builds these up over time
+// and subtracts them from the raw gyro before integration.
+float gyroBiasX = 0.0f, gyroBiasY = 0.0f, gyroBiasZ = 0.0f;
+
+// ============================================================
+
 void ICM45686_Init()
 {
     Wire.beginTransmission(ICM_ADDRESS);
@@ -82,30 +93,74 @@ void updateIMUReadings()
 {
     I2CReadBurst(0x00, ICM_ADDRESS, 12);
 
-    // Convert raw counts to SI units
-    // BUG FIX: ACCEL_SENSITIVITY and GYRO_SENSITIVITY are now float literals
-    //          (see config.h). Division of int16 by int caused truncation.
-    accelX = (float)rawAccelX * 9.80665f / ACCEL_SENSITIVITY;
-    accelY = (float)rawAccelY * 9.80665f / ACCEL_SENSITIVITY;
-    accelZ = (float)rawAccelZ * 9.80665f / ACCEL_SENSITIVITY;
+    // ---- Convert raw counts to SI units ----
+    accelX =  (float)rawAccelX * GRAVITY / ACCEL_SENSITIVITY;
+    accelY =  (float)rawAccelY * GRAVITY / ACCEL_SENSITIVITY;
+    accelZ =  (float)rawAccelZ * GRAVITY / ACCEL_SENSITIVITY;
 
-    // BUG FIX: explicit float cast before division — rawGyroX is int16_t and
-    //          GYRO_SENSITIVITY is now float, but the cast makes intent clear
-    //          and avoids surprising promotion rules on strict compilers.
+    // Gyro in deg/s — kept in deg/s for the PID rate controllers at the end.
+    // A separate rad/s copy is used internally for the quaternion integration.
     gyroX =  (float)rawGyroX / GYRO_SENSITIVITY;
     gyroY =  (float)rawGyroY / GYRO_SENSITIVITY;
-    gyroZ = -(float)rawGyroZ / GYRO_SENSITIVITY;  // negated to match frame convention
+    gyroZ = -(float)rawGyroZ / GYRO_SENSITIVITY;
 
-    // Accelerometer-derived angles (degrees)
-    accelPitch = atan2f(accelY, sqrtf(accelX * accelX + accelZ * accelZ)) * 180.0f / (float)PI;
-    accelRoll  = atan2f(-accelX, sqrtf(accelY * accelY + accelZ * accelZ)) * 180.0f / (float)PI;
+    // ---- Mahony filter ----
 
-    // Complementary filter — integrates gyro then blends with accel
-    pitch = pitch + (gyroX * deltaTime);
-    roll  = roll  + (gyroY * deltaTime);
+    // 1. Normalise the accelerometer reading.
+    //    If norm is zero (sensor fault / free-fall) skip the correction step
+    //    entirely — the quaternion will coast on gyro alone this cycle.
+    float norm = sqrtf(accelX*accelX + accelY*accelY + accelZ*accelZ);
+    if (norm == 0.0f) return;
+    float ax = accelX / norm;
+    float ay = accelY / norm;
+    float az = accelZ / norm;
 
-    pitch = alphaIMU * pitch + (1.0f - alphaIMU) * accelPitch;
-    roll  = alphaIMU * roll  + (1.0f - alphaIMU) * accelRoll;
+    // 2. Estimated gravity direction in body frame derived from the quaternion.
+    //    This is the third column of the rotation matrix built from q.
+    //    It answers: "given our current estimated orientation,
+    //    which direction should gravity be pointing in sensor coordinates?"
+    float vx = 2.0f * (q1*q3 - q0*q2);
+    float vy = 2.0f * (q0*q1 + q2*q3);
+    float vz = q0*q0 - q1*q1 - q2*q2 + q3*q3;
+
+    // 3. Cross product error: accel_measured × accel_expected.
+    //    Direction = axis of rotation needed to align the two vectors.
+    //    Magnitude ≈ sin(angle between them), so small errors stay small.
+    float ex = (ay*vz - az*vy);
+    float ey = (az*vx - ax*vz);
+    float ez = (ax*vy - ay*vx);
+
+    // 4. PI controller on the error.
+    //    Integral accumulates the gyro bias estimate over time.
+    gyroBiasX += ex * MAHONY_KI * deltaTime;
+    gyroBiasY += ey * MAHONY_KI * deltaTime;
+    gyroBiasZ += ez * MAHONY_KI * deltaTime;
+
+    // Convert gyro to rad/s and apply correction before integrating.
+    float gx = gyroX * (PI / 180.0f) + MAHONY_KP * ex + gyroBiasX;
+    float gy = gyroY * (PI / 180.0f) + MAHONY_KP * ey + gyroBiasY;
+    float gz = gyroZ * (PI / 180.0f) + MAHONY_KP * ez + gyroBiasZ;
+
+    // 5. Integrate the quaternion derivative: q̇ = 0.5 * q ⊗ [0, gx, gy, gz]
+    float dt = deltaTime;
+    q0 += 0.5f * (-q1*gx - q2*gy - q3*gz) * dt;
+    q1 += 0.5f * ( q0*gx + q2*gz - q3*gy) * dt;
+    q2 += 0.5f * ( q0*gy - q1*gz + q3*gx) * dt;
+    q3 += 0.5f * ( q0*gz + q1*gy - q2*gx) * dt;
+
+    // 6. Renormalise the quaternion to prevent numerical drift.
+    norm = sqrtf(q0*q0 + q1*q1 + q2*q2 + q3*q3);
+    q0 /= norm;
+    q1 /= norm;
+    q2 /= norm;
+    q3 /= norm;
+
+    // 7. Convert quaternion back to Euler angles (degrees) for PID controllers.
+    pitch = asinf ( 2.0f * (q0*q2 - q3*q1))                                  * (180.0f / PI);
+    roll  = atan2f( 2.0f * (q0*q1 + q2*q3),  1.0f - 2.0f*(q1*q1 + q2*q2))   * (180.0f / PI);
+    yaw   = atan2f( 2.0f * (q0*q3 + q1*q2),  1.0f - 2.0f*(q2*q2 + q3*q3))   * (180.0f / PI);
+
+    // gyroX/Y/Z remain in deg/s — used directly by the PID rate controllers.
 }
 
 // ============================================================
@@ -114,7 +169,7 @@ void updateIMUReadings()
 
 void I2CWriteIREG(uint16_t target_register, uint16_t base_increment, uint8_t data)
 {
-    uint16_t addr        = target_register + base_increment;
+    uint16_t addr         = target_register + base_increment;
     uint8_t  upperAddress = (uint8_t)(addr >> 8);
     uint8_t  lowerAddress = (uint8_t)(addr);
 
@@ -130,7 +185,7 @@ void I2CWriteIREG(uint16_t target_register, uint16_t base_increment, uint8_t dat
 
 uint8_t I2CReadIREG(uint16_t target_register, uint16_t base_increment)
 {
-    uint16_t addr        = target_register + base_increment;
+    uint16_t addr         = target_register + base_increment;
     uint8_t  upperAddress = (uint8_t)(addr >> 8);
     uint8_t  lowerAddress = (uint8_t)(addr);
 
@@ -154,15 +209,6 @@ void I2CReadBurst(uint8_t startReg, uint8_t deviceAddress, uint8_t burst)
     Wire.endTransmission(false);
     Wire.requestFrom(deviceAddress, burst);
 
-    // BUG FIX: original used expressions like:
-    //   rawAccelX = Wire.read();
-    //   rawAccelX = (Wire.read() << 8) | rawAccelX;
-    // The second line reads a new byte and ORs it with the value already in
-    // rawAccelX — this is correct logically, but relies on rawAccelX being
-    // read before the left-hand side is written, which is not guaranteed
-    // by the C standard (unsequenced side effect on the same object within
-    // a full expression).  Some compilers evaluate the RHS Wire.read() calls
-    // out of order.  Fix: use named temporaries.
     uint8_t lo, hi;
 
     lo = Wire.read(); hi = Wire.read();
