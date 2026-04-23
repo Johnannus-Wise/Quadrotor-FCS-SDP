@@ -30,7 +30,7 @@ static void update()
     sendAttitudePacket();
     sendBatteryPacket();
 
-    if (currentTime > printCounter * 1000000) {
+    if (currentTime > printCounter * 10000) {
 
         Serial.print(">");
 

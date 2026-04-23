@@ -11,10 +11,10 @@ WebServer server(80);
 // ============================================================
 //  HTML page template
 //  BUG FIX: the original static char page[8000] buffer was undersized.
-//  The template has 30 format specifiers (%.3f each expands to up to 10 chars).
-//  Template body ≈ 3 500 bytes + 30×10 = 3 800 bytes → safely within 8192,
-//  but the original 8000 was cutting it close and would silently truncate.
-//  Raised to 10000 for headroom; also PROGMEM-stored template to reduce DRAM
+//  The template has 32 format specifiers (%.4f each expands to up to 12 chars).
+//  Template body ≈ 3 600 bytes + 32×12 = 3 984 bytes → safely within 8192,
+//  Updated to include MAHONY_KP and MAHONY_KI parameters (2 additional values).
+//  Raised to 10200 for headroom; also PROGMEM-stored template to reduce DRAM
 //  pressure on the ESP32.
 // ============================================================
 
@@ -48,7 +48,8 @@ function updateParameters() {
     'rollRateKp','rollRateKi','rollRateKd','rollRateTol','rollRateDAlpha',
     'pitchRateKp','pitchRateKi','pitchRateKd','pitchRateTol','pitchRateDAlpha',
     'yawRateKp','yawRateKi','yawRateKd','yawRateTol','yawRateDAlpha',
-    'altitudeKp','altitudeKi','altitudeKd','altitudeTol','altitudeDAlpha'
+    'altitudeKp','altitudeKi','altitudeKd','altitudeTol','altitudeDAlpha',
+    'mahonyKp','mahonyKi'
   ];
   ids.forEach(id => p.append(id, document.getElementById(id).value));
   fetch('/update?' + p.toString());
@@ -102,6 +103,10 @@ setInterval(updateTelemetry, 300);
 <input id="altitudeTol"    value="%.4f"> Tol<br>
 <input id="altitudeDAlpha" value="%.4f"> D&#945;<br>
 
+<h3>Mahony Filter</h3>
+<input id="mahonyKp" value="%.4f"> Kp<br>
+<input id="mahonyKi" value="%.4f"> Ki<br>
+
 <br><br>
 <button onclick="updateParameters()">Update</button>
 
@@ -119,8 +124,8 @@ setInterval(updateTelemetry, 300);
 
 void handleRoot()
 {
-    // BUG FIX: raised buffer from 8000 → 10000 (see template note above)
-    static char page[10000];
+    // BUG FIX: raised buffer from 8000 → 10200 (see template note above)
+    static char page[10200];
 
     int written = snprintf(
         page, sizeof(page), htmlPageTemplate,
@@ -147,7 +152,9 @@ void handleRoot()
         // Altitude
         altitudeController.Kp,   altitudeController.Ki,
         altitudeController.Kd,   altitudeController.tolerance,
-        altitudeController.derivativeFilterAlpha);
+        altitudeController.derivativeFilterAlpha,
+        // Mahony Filter
+        MAHONY_KP, MAHONY_KI);
 
     // BUG FIX: original ignored snprintf return value.
     // If the buffer is still too small, serve a minimal error page.
@@ -197,6 +204,9 @@ void handleUpdate()
     altitudeController.Kd                    = server.arg("altitudeKd").toFloat();
     altitudeController.tolerance             = server.arg("altitudeTol").toFloat();
     altitudeController.derivativeFilterAlpha = server.arg("altitudeDAlpha").toFloat();
+
+    MAHONY_KP = server.arg("mahonyKp").toFloat();
+    MAHONY_KI = server.arg("mahonyKi").toFloat();
 
     server.send(200, "text/plain", "OK");
 }

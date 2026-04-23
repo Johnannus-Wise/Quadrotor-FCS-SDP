@@ -156,8 +156,8 @@ void updateIMUReadings()
     q3 /= norm;
 
     // 7. Convert quaternion back to Euler angles (degrees) for PID controllers.
-    pitch = asinf ( 2.0f * (q0*q2 - q3*q1))                                  * (180.0f / PI);
-    roll  = atan2f( 2.0f * (q0*q1 + q2*q3),  1.0f - 2.0f*(q1*q1 + q2*q2))   * (180.0f / PI);
+    roll = asinf ( 2.0f * (q0*q2 - q3*q1))                                  * (180.0f / PI);
+    pitch  = atan2f( 2.0f * (q0*q1 + q2*q3),  1.0f - 2.0f*(q1*q1 + q2*q2))   * (180.0f / PI);
     yaw   = atan2f( 2.0f * (q0*q3 + q1*q2),  1.0f - 2.0f*(q2*q2 + q3*q3))   * (180.0f / PI);
 
     // gyroX/Y/Z remain in deg/s — used directly by the PID rate controllers.
