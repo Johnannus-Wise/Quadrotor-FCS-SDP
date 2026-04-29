@@ -62,6 +62,10 @@ static bool  filterSeeded = false;
 static float prev1        = 0.0f;  // median-of-3 history
 static float prev2        = 0.0f;
 
+// Complementary filter state for accelerometer-based altitude integration
+static float accelAltitudeFiltered = 0.0f;  // low-pass filtered vertical accel residual
+static float accelAltitudeAlpha = 0.05f;    // EMA coefficient for smoothing accel-derived alt
+
 // ---------------------------------------------------------------------------
 //  Internal helpers
 // ---------------------------------------------------------------------------
@@ -72,6 +76,47 @@ static inline float median3(float a, float b, float c)
     if ((a <= b && b <= c) || (c <= b && b <= a)) return b;
     if ((b <= a && a <= c) || (c <= a && a <= b)) return a;
     return c;
+}
+
+// International Standard Atmosphere (ISA) altitude formula
+// Accurate up to ~11 km where troposphere ends
+// Formula: h = T0/L_rate * (1 - (P/P0)^(R*L_rate/g*M))
+// Simplified with ISA constants: h = 44330.77 * (1 - (P/P0)^(1/5.255))
+//
+// Parameters:
+//   pressure_pa: measured pressure in Pascals
+//   reference_pressure_pa: sea-level reference pressure in Pascals (typically 101325 Pa)
+//   temperature_c: measured temperature in °C (for improved accuracy in non-standard conditions)
+//
+// Returns: altitude in meters relative to reference pressure
+static inline float calculateAltitudeISA(float pressure_pa, float reference_pressure_pa, float temperature_c)
+{
+    // Guard against invalid inputs
+    if (pressure_pa <= 0.0f || reference_pressure_pa <= 0.0f) return 0.0f;
+    
+    // ISA formula with temperature compensation
+    // Temperature lapse rate in troposphere: 6.5 K per 1000 m (positive value)
+    // Reference temperature at sea level: 288.15 K (15°C)
+    const float ISA_TEMP_LAPSE_RATE = 0.0065f;        // K/m (positive)
+    const float ISA_TEMP_SEA_LEVEL = 288.15f;          // K
+    const float ISA_SCALE_HEIGHT = 44330.77f;          // meters (T0 / L_rate = 288.15 / 0.0065)
+    const float ISA_EXPONENT = 1.0f / 5.255f;          // Exact: R*L/g*M ≈ 0.190263
+    
+    // Temperature in Kelvin
+    float temp_kelvin = temperature_c + 273.15f;
+    
+    // Mean effective temperature for this measurement segment
+    // Use average of ISA reference and measured temperature for improved accuracy
+    float mean_temp = 0.5f * (ISA_TEMP_SEA_LEVEL + temp_kelvin);
+    
+    // Pressure ratio
+    float pressure_ratio = pressure_pa / reference_pressure_pa;
+    
+    // ISA altitude formula: h = (T_mean / L_rate) * (1 - (P/P0)^exponent)
+    // Temperature-adaptive: h = (mean_temp / ISA_TEMP_LAPSE_RATE) * (1 - (P/P0)^(1/5.255))
+    float altitude = (mean_temp / ISA_TEMP_LAPSE_RATE) * (1.0f - powf(pressure_ratio, ISA_EXPONENT));
+    
+    return altitude;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +320,11 @@ void getInitialPressure(int sampleSize)
     altitudeOut     = 0.0f;
     prev1           = 0.0f;
     prev2           = 0.0f;
+    
+    // Reset complementary filter state
+    altitudeFromAccel = 0.0f;
+    velocityZ = 0.0f;
+    accelAltitudeFiltered = 0.0f;
 
     initialPressure = 0.0f;
     initialTemp     = 0.0f;
@@ -319,6 +369,66 @@ void getInitialPressure(int sampleSize)
     // Serial.println("Initial pressure obtained");
 }
 
+void renewReferencePressure(int sampleSize)
+{
+    // When motors are armed, establish a new baseline altitude
+    // Reset all altitude filters and resample the current pressure reading
+    // Serial.println("Renewing reference pressure at arm...");
+    
+    filterSeeded    = false;
+    ema1            = 0.0f;
+    ema2            = 0.0f;
+    altitudeOut     = 0.0f;
+    prev1           = 0.0f;
+    prev2           = 0.0f;
+    
+    // Reset complementary filter state
+    altitudeFromAccel = 0.0f;
+    velocityZ = 0.0f;
+    accelAltitudeFiltered = 0.0f;
+
+    initialPressure = 0.0f;
+    initialTemp     = 0.0f;
+    int counter     = 0;
+
+    for (int i = 0; i < sampleSize; i++)
+    {
+        uint32_t tStart = millis();
+        uint8_t  status = 0;
+        do {
+            Wire.beginTransmission(BMP388ADDRESS);
+            Wire.write(0x03);
+            Wire.endTransmission(false);
+            Wire.requestFrom(BMP388ADDRESS, 1);
+            status = Wire.read();
+            if (!(status & 0x20)) {
+                delay(5);
+            } 
+        } while (!(status & 0x20) && (millis() - tStart) < 500);
+
+        if (!(status & 0x20)) {
+            continue;  // timed out — skip sample
+        }
+
+        readTempPres(&rawPressure, &rawTemp);
+        float t          = BMP388CompensateTemp(rawTemp);
+        initialTemp     += t;
+        initialPressure += BMP388CompensatePressure(rawPressure, t);
+        counter++;
+    }
+
+    if (counter > 0)
+    {
+        initialPressure /= (float)counter;
+        initialTemp     /= (float)counter;
+        // Serial.printf("Reference renewed: pressure = %.2f Pa | temp = %.2f °C\n", initialPressure, initialTemp);
+    }
+    // Reset altitude to zero when armed
+    altitude = 0.0f;
+    altitudeOut = 0.0f;
+    // Serial.println("Reference pressure renewed at arm");
+}
+
 void updateAltitudeReadings()
 {
     // Serial.println("Updating Altitude...");
@@ -336,8 +446,9 @@ void updateAltitudeReadings()
 
     if (initialPressure <= 0.0f) return;
 
-    // Step 1: hypsometric altitude
-    float rawAlt = 44330.0f * (1.0f - expf(0.1903f * logf(pressure / initialPressure)));
+    // ---- BAROMETER PATH ----
+    // Step 1: ISA altitude calculation from pressure and temperature
+    float rawAlt = calculateAltitudeISA(pressure, initialPressure, temp);
 
     // Step 2: median-of-3 spike rejection
     float medAlt = median3(rawAlt, prev1, prev2);
@@ -351,20 +462,46 @@ void updateAltitudeReadings()
         ema2         = medAlt;
         altitudeOut  = medAlt;
         filterSeeded = true;
+        altitudeFromAccel = medAlt;  // sync accel altitude to baro
     }
     ema1 = EMA1_ALPHA * ema1 + (1.0f - EMA1_ALPHA) * medAlt;
     ema2 = EMA2_ALPHA * ema2 + (1.0f - EMA2_ALPHA) * ema1;
 
-    // Step 4: thermal drift correction
-    //   Altitude reads high when die temperature rises (gas law + board heat).
-    //   correction = THERMAL_DRIFT_GAIN × (T_now − T_ref)
+    // Step 4: BMP388 chip thermal drift correction
+    //   The ISA formula uses actual measured temperature, but BMP388 can internally
+    //   heat up during long flights. This correction accounts for self-heating effects.
+    //   Note: initialTemp is sampled at startup/arming and may differ from ambient
+    //   if the chip has already warmed up. Consider this when tuning THERMAL_DRIFT_GAIN.
     float driftCorrection = THERMAL_DRIFT_GAIN * (temp - initialTemp);
-    float correctedAlt    = ema2 - driftCorrection;
+    float baroAltitude    = ema2 - driftCorrection;
+
+    // ---- ACCELEROMETER PATH (Complementary Filter Integration) ----
+    // Estimate vertical acceleration: accelZ - gravity (net acceleration in inertial frame)
+    // accelZ is in m/s² and already includes gravity when level
+    float accelNetVertical = accelZ - GRAVITY;  // subtract gravity to get net vertical accel
+
+    // Integrate acceleration to velocity
+    velocityZ += accelNetVertical * deltaTime;
+
+    // Integrate velocity to altitude
+    altitudeFromAccel += velocityZ * deltaTime;
+
+    // Low-pass filter the accelerometer altitude to reduce noise
+    accelAltitudeFiltered = accelAltitudeAlpha * accelAltitudeFiltered + 
+                           (1.0f - accelAltitudeAlpha) * altitudeFromAccel;
+
+    // ---- COMPLEMENTARY FILTER ----
+    // Blend barometer (low-pass, drift-free) with accelerometer (high-pass, responsive)
+    // When altitudeComplementaryAlpha = 0: use barometer only
+    // When altitudeComplementaryAlpha = 1: use accelerometer only
+    // Typical range: 0.05 - 0.3 (mostly barometer with fast accel correction)
+    float fusedAltitude = (1.0f - altitudeComplementaryAlpha) * baroAltitude + 
+                         altitudeComplementaryAlpha * accelAltitudeFiltered;
 
     // Step 5: hysteresis gate — suppress sub-noise-floor jitter
-    if (fabsf(correctedAlt - altitudeOut) > ALTITUDE_HYSTERESIS_M)
+    if (fabsf(fusedAltitude - altitudeOut) > ALTITUDE_HYSTERESIS_M)
     {
-        altitudeOut = correctedAlt;
+        altitudeOut = fusedAltitude;
     }
 
     altitude = altitudeOut;

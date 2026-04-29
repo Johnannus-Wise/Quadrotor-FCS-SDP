@@ -11,10 +11,10 @@ WebServer server(80);
 // ============================================================
 //  HTML page template
 //  BUG FIX: the original static char page[8000] buffer was undersized.
-//  The template has 32 format specifiers (%.4f each expands to up to 12 chars).
-//  Template body ≈ 3 600 bytes + 32×12 = 3 984 bytes → safely within 8192,
-//  Updated to include MAHONY_KP and MAHONY_KI parameters (2 additional values).
-//  Raised to 10200 for headroom; also PROGMEM-stored template to reduce DRAM
+//  The template has 33 format specifiers (%.4f each expands to up to 12 chars).
+//  Template body ≈ 3 700 bytes + 33×12 = 4 096 bytes → safely within 8192,
+//  Updated to include MAHONY_KP, MAHONY_KI, and altitudeComplementaryAlpha.
+//  Raised to 10300 for headroom; also PROGMEM-stored template to reduce DRAM
 //  pressure on the ESP32.
 // ============================================================
 
@@ -49,7 +49,7 @@ function updateParameters() {
     'pitchRateKp','pitchRateKi','pitchRateKd','pitchRateTol','pitchRateDAlpha',
     'yawRateKp','yawRateKi','yawRateKd','yawRateTol','yawRateDAlpha',
     'altitudeKp','altitudeKi','altitudeKd','altitudeTol','altitudeDAlpha',
-    'mahonyKp','mahonyKi'
+    'mahonyKp','mahonyKi','altitudeComplementaryAlpha'
   ];
   ids.forEach(id => p.append(id, document.getElementById(id).value));
   fetch('/update?' + p.toString());
@@ -107,6 +107,9 @@ setInterval(updateTelemetry, 300);
 <input id="mahonyKp" value="%.4f"> Kp<br>
 <input id="mahonyKi" value="%.4f"> Ki<br>
 
+<h3>Altitude Complementary Filter</h3>
+<input id="altitudeComplementaryAlpha" value="%.4f"> Alpha (0=baro only, 1=accel only)<br>
+
 <br><br>
 <button onclick="updateParameters()">Update</button>
 
@@ -124,8 +127,8 @@ setInterval(updateTelemetry, 300);
 
 void handleRoot()
 {
-    // BUG FIX: raised buffer from 8000 → 10200 (see template note above)
-    static char page[10200];
+    // BUG FIX: raised buffer from 8000 → 10300 (see template note above)
+    static char page[10300];
 
     int written = snprintf(
         page, sizeof(page), htmlPageTemplate,
@@ -154,7 +157,9 @@ void handleRoot()
         altitudeController.Kd,   altitudeController.tolerance,
         altitudeController.derivativeFilterAlpha,
         // Mahony Filter
-        MAHONY_KP, MAHONY_KI);
+        MAHONY_KP, MAHONY_KI,
+        // Altitude Complementary Filter
+        altitudeComplementaryAlpha);
 
     // BUG FIX: original ignored snprintf return value.
     // If the buffer is still too small, serve a minimal error page.
@@ -207,6 +212,11 @@ void handleUpdate()
 
     MAHONY_KP = server.arg("mahonyKp").toFloat();
     MAHONY_KI = server.arg("mahonyKi").toFloat();
+
+    altitudeComplementaryAlpha = server.arg("altitudeComplementaryAlpha").toFloat();
+    // Clamp complementary filter alpha to valid range [0, 1]
+    if (altitudeComplementaryAlpha < 0.0f) altitudeComplementaryAlpha = 0.0f;
+    if (altitudeComplementaryAlpha > 1.0f) altitudeComplementaryAlpha = 1.0f;
 
     server.send(200, "text/plain", "OK");
 }

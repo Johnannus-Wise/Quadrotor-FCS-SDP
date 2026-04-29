@@ -41,6 +41,11 @@ float    pressure = 0.0f, temp = 0.0f, altitude = 0.0f, hoverAltitude = 0.0f;
 float    initialTemp = 0.0f, initialPressure = 0.0f;
 bool     altitudeLock = false;
 
+// ----- Complementary filter for altitude (barometer + accelerometer integration) -----
+float    altitudeFromAccel = 0.0f;  // altitude estimate from accelerometer double-integration
+float    velocityZ = 0.0f;          // vertical velocity from accelerometer (m/s)
+float    altitudeComplementaryAlpha = 0.97f;  // blending factor: 0=all barometer, 1=all accel
+
 // ----- Receiver / CRSF -----
 uint8_t channelsPacket[26] = {0};
 uint8_t data0[22]          = {0};

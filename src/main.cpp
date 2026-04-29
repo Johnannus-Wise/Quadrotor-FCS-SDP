@@ -123,6 +123,9 @@ void loop()
     if (channels.ch[4].data < 900)
     {
         Serial.println("ARMED");
+        // Renew the reference pressure baseline when armed
+        // This establishes current altitude as 0 m for this flight
+        renewReferencePressure(INIT_SAMPLE_SIZE);
         while (true)
         {
             update();

@@ -4,6 +4,7 @@
 
 void initBMP388();
 void getInitialPressure(int sampleSize);
+void renewReferencePressure(int sampleSize);  // Called when motors are armed to establish new baseline
 void updateAltitudeReadings();
 void getCompensationData();
 void checkSensorStatus();
