@@ -15,11 +15,7 @@ extern const char *password;
 #define BMP388ADDRESS   0x76
 #define I2C_SDA_PIN     21
 #define I2C_SCL_PIN     22
-#define I2C_SPEED       1000000       // BMP388 I²C fast-mode spec is 400 kHz max.
-                                    // 1 MHz is "fast-mode plus" and causes timeout
-                                    // failures on BMP388. 400 kHz is reliable and
-                                    // still leaves ICM-45686 headroom.
-
+#define I2C_SPEED       1000000 
 #define P0              101325
 #define INIT_SAMPLE_SIZE 100
 
@@ -61,13 +57,13 @@ extern float gyroBiasX, gyroBiasY, gyroBiasZ;  // estimated gyro bias
 #define PWM_RANGE       ((int)(1 << PWM_RESOLUTION))
 #define SIGNAL_MAX      1811
 #define SIGNAL_MIN      174
-#define MIN_THROTTLE_FRAC   0.525f   // 5 % throttle floor
-#define MAX_THROTTLE_FRAC   0.90f    // 90 % throttle ceiling
+#define MIN_THROTTLE_FRAC   0.525f   // 5% throttle floor
+#define MAX_THROTTLE_FRAC   0.90f    // 80% throttle ceiling
 
 // ===== Flight limits =====
 #define TILT_ANGLE_MAX      25
-#define YAW_SPEED_MAX       90
-#define MIN_ALTITUDE        0
+#define YAW_SPEED_MAX       15
+#define MIN_ALTITUDE        1
 #define MAX_ALTITUDE        30
 #define MAX_THROTTLE_VALUE  (PWM_RANGE - 1)
 #define MIN_THROTTLE_VALUE  ((PWM_RANGE / 2) - 1)

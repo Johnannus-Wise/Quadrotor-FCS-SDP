@@ -30,27 +30,36 @@ static void update()
     sendAttitudePacket();
     sendBatteryPacket();
 
-    if (currentTime > printCounter * 10000) {
-
-        Serial.print(">");
-
-        Serial.print("Altitude:");
-        Serial.print(altitude);
-        Serial.print(",");
-
-        Serial.print("Pitch:");
-        Serial.print(pitch);
-        Serial.print(",");
-
-        Serial.print("Roll:");
-        Serial.print(roll);
-
-        Serial.println(); // Writes \r\n
+    // if (currentTime > printCounter * 1000000) {
 
 
-        // Serial.printf("Raw readings: %i, Measured voltage: %.2fV, Battery voltage: %.2fV, Used Percentage: %.2f%%, Remaining Percentage: %i%%\n", rawBatteryReadings, measuredVoltage, batteryVoltage, batteryPercentUsed * 100.0f, batteryRemainingPercent);
-        printCounter++;
-    }
+    //     // Serial.print(printCounter);
+    //     Serial.print(">");
+
+    //     Serial.print("Temperature:");
+    //     Serial.print(temp);
+    //     Serial.print(",");
+
+    //     Serial.print("Pressure:");
+    //     Serial.print(pressure);
+    //     Serial.print(",");
+
+    //     Serial.print("Altitude:");
+    //     Serial.print(altitude);
+    //     Serial.print(",");
+
+    //     Serial.print("Pitch:");
+    //     Serial.print(pitch);
+    //     Serial.print(",");
+
+    //     Serial.print("Roll:");
+    //     Serial.print(roll);
+
+    //     Serial.println(); // Writes \r\n
+
+    //     // Serial.printf("Raw readings: %i, Measured voltage: %.2fV, Battery voltage: %.2fV, Used Percentage: %.2f%%, Remaining Percentage: %i%%\n", rawBatteryReadings, measuredVoltage, batteryVoltage, batteryPercentUsed * 100.0f, batteryRemainingPercent);
+    //     printCounter++;
+    // }
     
 
     // Service web clients at ~100 Hz (every 10 ms) without blocking the loop
@@ -125,7 +134,7 @@ void loop()
         Serial.println("ARMED");
         // Renew the reference pressure baseline when armed
         // This establishes current altitude as 0 m for this flight
-        renewReferencePressure(INIT_SAMPLE_SIZE);
+        // renewReferencePressure(INIT_SAMPLE_SIZE);
         while (true)
         {
             update();
@@ -164,8 +173,11 @@ void loop()
             // ch[6] low → ESC calibration sequence
             if (channels.ch[6].data < 900)
             {
+                // Serial.println("ESC Calibration Mode");
+                // channels.displayReadings();
                 if (mainThrottleInput == MAX_THROTTLE_VALUE)
                 {
+                    // Serial.println("ESC Calibration: Max Throttle");
                     ledcWrite(FRONT_LEFT,  mainThrottleInput);
                     ledcWrite(FRONT_RIGHT, mainThrottleInput);
                     ledcWrite(REAR_RIGHT,  mainThrottleInput);
@@ -173,6 +185,7 @@ void loop()
                 }
                 else if (mainThrottleInput == MIN_THROTTLE_VALUE)
                 {
+                    // Serial.println("ESC Calibration: Min Throttle");
                     ledcWrite(FRONT_LEFT,  mainThrottleInput);
                     ledcWrite(FRONT_RIGHT, mainThrottleInput);
                     ledcWrite(REAR_RIGHT,  mainThrottleInput);

@@ -11,9 +11,9 @@ WebServer server(80);
 // ============================================================
 //  HTML page template
 //  BUG FIX: the original static char page[8000] buffer was undersized.
-//  The template has 33 format specifiers (%.4f each expands to up to 12 chars).
-//  Template body ≈ 3 700 bytes + 33×12 = 4 096 bytes → safely within 8192,
-//  Updated to include MAHONY_KP, MAHONY_KI, and altitudeComplementaryAlpha.
+//  The template has 32 format specifiers (%.4f each expands to up to 12 chars).
+//  Template body ≈ 3 700 bytes + 32×12 = 4 084 bytes → safely within 8192,
+//  Updated to include MAHONY_KP and MAHONY_KI.
 //  Raised to 10300 for headroom; also PROGMEM-stored template to reduce DRAM
 //  pressure on the ESP32.
 // ============================================================
@@ -34,9 +34,12 @@ function updateTelemetry() {
   fetch('/telemetry')
     .then(r => r.json())
     .then(d => {
-      document.getElementById('roll').innerText     = d.roll.toFixed(2);
-      document.getElementById('pitch').innerText    = d.pitch.toFixed(2);
-      document.getElementById('altitude').innerText = d.altitude.toFixed(2);
+      document.getElementById('temperature').innerText = d.temperature_c.toFixed(2);
+      document.getElementById('pressure').innerText    = d.pressure_pa.toFixed(2);
+      document.getElementById('altitude').innerText    = d.altitude_m.toFixed(2);
+      document.getElementById('pitch').innerText       = d.pitch_deg.toFixed(2);
+      document.getElementById('roll').innerText        = d.roll_deg.toFixed(2);
+      document.getElementById('throttle').innerText    = d.throttle.toFixed(0);
     });
 }
 
@@ -49,7 +52,7 @@ function updateParameters() {
     'pitchRateKp','pitchRateKi','pitchRateKd','pitchRateTol','pitchRateDAlpha',
     'yawRateKp','yawRateKi','yawRateKd','yawRateTol','yawRateDAlpha',
     'altitudeKp','altitudeKi','altitudeKd','altitudeTol','altitudeDAlpha',
-    'mahonyKp','mahonyKi','altitudeComplementaryAlpha'
+    'mahonyKp','mahonyKi'
   ];
   ids.forEach(id => p.append(id, document.getElementById(id).value));
   fetch('/update?' + p.toString());
@@ -107,16 +110,17 @@ setInterval(updateTelemetry, 300);
 <input id="mahonyKp" value="%.4f"> Kp<br>
 <input id="mahonyKi" value="%.4f"> Ki<br>
 
-<h3>Altitude Complementary Filter</h3>
-<input id="altitudeComplementaryAlpha" value="%.4f"> Alpha (0=baro only, 1=accel only)<br>
-
 <br><br>
 <button onclick="updateParameters()">Update</button>
 
 <hr>
-<p>Roll: <span id="roll">0</span> &deg;</p>
-<p>Pitch: <span id="pitch">0</span> &deg;</p>
+<h3>Telemetry</h3>
+<p>Temperature: <span id="temperature">0</span> &deg;C</p>
+<p>Pressure: <span id="pressure">0</span> Pa</p>
 <p>Altitude: <span id="altitude">0</span> m</p>
+<p>Pitch: <span id="pitch">0</span> &deg;</p>
+<p>Roll: <span id="roll">0</span> &deg;</p>
+<p>Throttle: <span id="throttle">0</span></p>
 </body>
 </html>
 )rawliteral";
@@ -157,9 +161,7 @@ void handleRoot()
         altitudeController.Kd,   altitudeController.tolerance,
         altitudeController.derivativeFilterAlpha,
         // Mahony Filter
-        MAHONY_KP, MAHONY_KI,
-        // Altitude Complementary Filter
-        altitudeComplementaryAlpha);
+        MAHONY_KP, MAHONY_KI);
 
     // BUG FIX: original ignored snprintf return value.
     // If the buffer is still too small, serve a minimal error page.
@@ -213,11 +215,6 @@ void handleUpdate()
     MAHONY_KP = server.arg("mahonyKp").toFloat();
     MAHONY_KI = server.arg("mahonyKi").toFloat();
 
-    altitudeComplementaryAlpha = server.arg("altitudeComplementaryAlpha").toFloat();
-    // Clamp complementary filter alpha to valid range [0, 1]
-    if (altitudeComplementaryAlpha < 0.0f) altitudeComplementaryAlpha = 0.0f;
-    if (altitudeComplementaryAlpha > 1.0f) altitudeComplementaryAlpha = 1.0f;
-
     server.send(200, "text/plain", "OK");
 }
 
@@ -225,10 +222,10 @@ void handleTelemetry()
 {
     // BUG FIX: original built a String by concatenation in a tight hot-path.
     // Use snprintf into a stack buffer to avoid heap fragmentation.
-    char buf[128];
+    char buf[256];
     snprintf(buf, sizeof(buf),
-             "{\"roll\":%.2f,\"pitch\":%.2f,\"altitude\":%.2f}",
-             roll, pitch, altitude);
+             "{\"temperature_c\":%.2f,\"pressure_pa\":%.2f,\"altitude_m\":%.2f,\"pitch_deg\":%.2f,\"roll_deg\":%.2f,\"throttle\":%d}",
+             temp, pressure, altitude, pitch, roll, mainThrottleInput);
     server.send(200, "application/json", buf);
 }
 
@@ -244,6 +241,12 @@ void PIDWebPage()
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     delay(100);
+
+    // Set static IP to 192.168.100.19
+    IPAddress staticIP(192, 168, 100, 19);
+    IPAddress gateway(192, 168, 100, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    WiFi.config(staticIP, gateway, subnet);
 
     WiFi.begin(ssid, password);
     WiFi.setSleep(false);

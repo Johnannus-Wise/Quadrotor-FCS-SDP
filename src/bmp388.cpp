@@ -5,7 +5,7 @@
 //    Raw 24-bit ADC
 //      └─► Hardware IIR filter (coeff 7)      — kills high-freq noise in silicon
 //            └─► Bosch compensated pressure (Pa)
-//                  └─► Hypsometric altitude (m)
+//                  └─► ISA altitude (m)
 //                        └─► Median-of-3 spike rejection   — kills single-sample outliers
 //                              └─► EMA stage 1 (α=0.80, ~2 Hz cutoff)   — fast smoothing
 //                                    └─► EMA stage 2 (α=0.92, ~0.6 Hz cutoff) — final smooth
@@ -62,9 +62,7 @@ static bool  filterSeeded = false;
 static float prev1        = 0.0f;  // median-of-3 history
 static float prev2        = 0.0f;
 
-// Complementary filter state for accelerometer-based altitude integration
-static float accelAltitudeFiltered = 0.0f;  // low-pass filtered vertical accel residual
-static float accelAltitudeAlpha = 0.05f;    // EMA coefficient for smoothing accel-derived alt
+
 
 // ---------------------------------------------------------------------------
 //  Internal helpers
@@ -115,7 +113,7 @@ static inline float calculateAltitudeISA(float pressure_pa, float reference_pres
     // ISA altitude formula: h = (T_mean / L_rate) * (1 - (P/P0)^exponent)
     // Temperature-adaptive: h = (mean_temp / ISA_TEMP_LAPSE_RATE) * (1 - (P/P0)^(1/5.255))
     float altitude = (mean_temp / ISA_TEMP_LAPSE_RATE) * (1.0f - powf(pressure_ratio, ISA_EXPONENT));
-    
+    // Serial.printf("Calculated altitude = %.2f m (P=%.2f Pa, T=%.2f °C)\n", altitude, pressure_pa, temperature_c);
     return altitude;
 }
 
@@ -194,7 +192,7 @@ void getCompensationData()
     Wire.write(0x31);
     Wire.endTransmission(false);
     Wire.requestFrom(BMP388ADDRESS, 21);
-    delay(500);
+    delay(1000);
 
     if (Wire.available() == 21)
     {
@@ -312,7 +310,7 @@ float BMP388CompensatePressure(uint32_t uncompPressure, float T)
 
 void getInitialPressure(int sampleSize)
 {
-    // Serial.println("Getting initial pressure...");
+    Serial.println("Getting initial pressure...");
     // Reset software filter state so arming does not blend stale pre-arm values
     filterSeeded    = false;
     ema1            = 0.0f;
@@ -320,11 +318,6 @@ void getInitialPressure(int sampleSize)
     altitudeOut     = 0.0f;
     prev1           = 0.0f;
     prev2           = 0.0f;
-    
-    // Reset complementary filter state
-    altitudeFromAccel = 0.0f;
-    velocityZ = 0.0f;
-    accelAltitudeFiltered = 0.0f;
 
     initialPressure = 0.0f;
     initialTemp     = 0.0f;
@@ -366,7 +359,7 @@ void getInitialPressure(int sampleSize)
         initialTemp     /= (float)counter;
         // Serial.printf("Initial pressure = %.2f Pa | Initial temp = %.2f °C\n", initialPressure, initialTemp);
     }
-    // Serial.println("Initial pressure obtained");
+    Serial.println("Initial pressure obtained");
 }
 
 void renewReferencePressure(int sampleSize)
@@ -381,11 +374,6 @@ void renewReferencePressure(int sampleSize)
     altitudeOut     = 0.0f;
     prev1           = 0.0f;
     prev2           = 0.0f;
-    
-    // Reset complementary filter state
-    altitudeFromAccel = 0.0f;
-    velocityZ = 0.0f;
-    accelAltitudeFiltered = 0.0f;
 
     initialPressure = 0.0f;
     initialTemp     = 0.0f;
@@ -462,7 +450,6 @@ void updateAltitudeReadings()
         ema2         = medAlt;
         altitudeOut  = medAlt;
         filterSeeded = true;
-        altitudeFromAccel = medAlt;  // sync accel altitude to baro
     }
     ema1 = EMA1_ALPHA * ema1 + (1.0f - EMA1_ALPHA) * medAlt;
     ema2 = EMA2_ALPHA * ema2 + (1.0f - EMA2_ALPHA) * ema1;
@@ -475,35 +462,14 @@ void updateAltitudeReadings()
     float driftCorrection = THERMAL_DRIFT_GAIN * (temp - initialTemp);
     float baroAltitude    = ema2 - driftCorrection;
 
-    // ---- ACCELEROMETER PATH (Complementary Filter Integration) ----
-    // Estimate vertical acceleration: accelZ - gravity (net acceleration in inertial frame)
-    // accelZ is in m/s² and already includes gravity when level
-    float accelNetVertical = accelZ - GRAVITY;  // subtract gravity to get net vertical accel
-
-    // Integrate acceleration to velocity
-    velocityZ += accelNetVertical * deltaTime;
-
-    // Integrate velocity to altitude
-    altitudeFromAccel += velocityZ * deltaTime;
-
-    // Low-pass filter the accelerometer altitude to reduce noise
-    accelAltitudeFiltered = accelAltitudeAlpha * accelAltitudeFiltered + 
-                           (1.0f - accelAltitudeAlpha) * altitudeFromAccel;
-
-    // ---- COMPLEMENTARY FILTER ----
-    // Blend barometer (low-pass, drift-free) with accelerometer (high-pass, responsive)
-    // When altitudeComplementaryAlpha = 0: use barometer only
-    // When altitudeComplementaryAlpha = 1: use accelerometer only
-    // Typical range: 0.05 - 0.3 (mostly barometer with fast accel correction)
-    float fusedAltitude = (1.0f - altitudeComplementaryAlpha) * baroAltitude + 
-                         altitudeComplementaryAlpha * accelAltitudeFiltered;
-
     // Step 5: hysteresis gate — suppress sub-noise-floor jitter
-    if (fabsf(fusedAltitude - altitudeOut) > ALTITUDE_HYSTERESIS_M)
+    if (fabsf(baroAltitude - altitudeOut) > ALTITUDE_HYSTERESIS_M)
     {
-        altitudeOut = fusedAltitude;
+        altitudeOut = baroAltitude;
     }
 
+    // Serial.printf("Raw Alt=%.2f m | Med Alt=%.2f m | EMA2 Alt=%.2f m | Drift Corr=%.2f m | Baro Alt=%.2f m | Published Alt=%.2f m\n",
+    //               rawAlt, medAlt, ema2, driftCorrection, baroAltitude, altitudeOut);
     altitude = altitudeOut;
     // Serial.println("Altitude updated");
 }

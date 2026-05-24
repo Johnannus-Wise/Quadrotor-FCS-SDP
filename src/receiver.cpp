@@ -15,57 +15,36 @@ Channels::Channels(int angleMin, int angleMax,
     yawIntercept      = (float) yawMin      - (yawSlope       * SIGNAL_MIN);
     altitudeSlope     = (float)(altitudeMax - altitudeMin) / (SIGNAL_MAX - SIGNAL_MIN);
     altitudeIntercept = (float) altitudeMin - (altitudeSlope  * SIGNAL_MIN);
+    setDutyCycle(PWM_FREQUENCY, PWM_RESOLUTION);
 }
 
 void Channels::setChannelReadings(uint8_t refData[22])
 {
-    // BUG FIX: CRSF 11-bit channel unpacking used expressions like:
-    //   ch[N].data = refData[i] | (refData[j] << K);
-    // For channels that span three source bytes the third-byte contribution
-    // was masked to 11 bits by the bitfield, but the intermediate shift
-    // (refData[j] << K with K ≥ 8) could overflow uint8_t before the shift
-    // if the compiler evaluates as uint8_t arithmetic.  Explicit uint16_t /
-    // uint32_t casts make the intent unambiguous.
-    ch[0].data  = (uint16_t)refData[0]  | ((uint16_t)refData[1]  << 8);
-    ch[1].data  = ((uint16_t)refData[1]  >> 3) | ((uint16_t)refData[2]  << 5);
-    ch[2].data  = ((uint16_t)refData[2]  >> 6) | ((uint16_t)refData[3]  << 2) | ((uint16_t)refData[4]  << 10);
-    ch[3].data  = ((uint16_t)refData[4]  >> 1) | ((uint16_t)refData[5]  << 7);
-    ch[4].data  = ((uint16_t)refData[5]  >> 4) | ((uint16_t)refData[6]  << 4);
-    ch[5].data  = ((uint16_t)refData[6]  >> 7) | ((uint16_t)refData[7]  << 1) | ((uint16_t)refData[8]  << 9);
-    ch[6].data  = ((uint16_t)refData[8]  >> 2) | ((uint16_t)refData[9]  << 6);
-    ch[7].data  = ((uint16_t)refData[9]  >> 5) | ((uint16_t)refData[10] << 3);
-    ch[8].data  = (uint16_t)refData[11]         | ((uint16_t)refData[12] << 8);
-    ch[9].data  = ((uint16_t)refData[12] >> 3) | ((uint16_t)refData[13] << 5);
-    ch[10].data = ((uint16_t)refData[13] >> 6) | ((uint16_t)refData[14] << 2) | ((uint16_t)refData[15] << 10);
-    ch[11].data = ((uint16_t)refData[15] >> 1) | ((uint16_t)refData[16] << 7);
-    ch[12].data = ((uint16_t)refData[16] >> 4) | ((uint16_t)refData[17] << 4);
-    ch[13].data = ((uint16_t)refData[17] >> 7) | ((uint16_t)refData[18] << 1) | ((uint16_t)refData[19] << 9);
-    ch[14].data = ((uint16_t)refData[19] >> 2) | ((uint16_t)refData[20] << 6);
-    ch[15].data = ((uint16_t)refData[20] >> 5) | ((uint16_t)refData[21] << 3);
-
+    ch[0].data  = refData[0]  | (refData[1]  << 8);
+    ch[1].data  = (refData[1]  >> 3) | (refData[2]  << 5);
+    ch[2].data  = ((refData[2]  >> 6) | (refData[3]  << 2) | (refData[4]  << 10));
+    ch[3].data  = (refData[4]  >> 1) | (refData[5]  << 7);
+    ch[4].data  = (refData[5]  >> 4) | (refData[6]  << 4);
+    ch[5].data  = (refData[6]  >> 7) | (refData[7]  << 1) | (refData[8]  << 9);
+    ch[6].data  = (refData[8]  >> 2) | (refData[9]  << 6);
+    ch[7].data  = (refData[9]  >> 5) | (refData[10] << 3);
+    ch[8].data  = (refData[11])      | (refData[12] << 8);
+    ch[9].data  = (refData[12] >> 3) | (refData[13] << 5);
+    ch[10].data = (refData[13] >> 6) | (refData[14] << 2) | (refData[15] << 10);
+    ch[11].data = (refData[15] >> 1) | (refData[16] << 7);
+    ch[12].data = (refData[16] >> 4) | (refData[17] << 4);
+    ch[13].data = (refData[17] >> 7) | (refData[18] << 1) | (refData[19] << 9);
+    ch[14].data = (refData[19] >> 2) | (refData[20] << 6);
+    ch[15].data = (refData[20] >> 5) | (refData[21] << 3);
     rescale();
 }
 
 void Channels::rescale()
 {
     mainThrottleInput = (int)(throttleSlope * (float)ch[2].data + throttleIntercept);
-
-    // BUG FIX: the original guard was:
-    //   if (mainThrottleInput > 0.6 * maxThrottleValue)
-    // This uses a different threshold (60 %) than the MIN_THROTTLE_FRAC (52.5 %)
-    // defined for the PID and motor clamp, creating a window where desiredRoll /
-    // desiredPitch are zeroed but the PID still runs — causing the aircraft to
-    // fight the pilot's stick inputs near mid-throttle.  Use the same constant.
-    if ((float)mainThrottleInput > MIN_THROTTLE_FRAC * (float)MAX_THROTTLE_VALUE)
-    {
-        desiredRoll  = (int)(angleSlope * (float)ch[0].data + angleIntercept);
-        desiredPitch = (int)(angleSlope * (float)ch[1].data + angleIntercept);
-    }
-    else
-    {
-        desiredRoll  = 0;
-        desiredPitch = 0;
-    }
+    
+    desiredRoll  = (int)(angleSlope * (float)ch[0].data + angleIntercept);
+    desiredPitch = (int)(angleSlope * (float)ch[1].data + angleIntercept);
 
     yawSpeed       = (int)(yawSlope      * (float)ch[3].data + yawIntercept);
     desiredAltitude = (int)(altitudeSlope * (float)ch[2].data + altitudeIntercept);
@@ -80,8 +59,8 @@ void Channels::setDutyCycle(int desiredFrequency, int desiredResolution)
     int   range             = (1 << desiredResolution);   // BUG FIX: pow() → bit shift
     float minDuty           = 0.001f / period;
     float maxDuty           = 0.002f / period;
-    float minThrottleSignal = (float)range * minDuty;
-    float maxThrottleSignal = (float)range * maxDuty;
+    float minThrottleSignal = (float)range * minDuty - 1;
+    float maxThrottleSignal = (float)range * maxDuty - 1;
 
     throttleSlope     = (maxThrottleSignal - minThrottleSignal) / (float)(SIGNAL_MAX - SIGNAL_MIN);
     throttleIntercept = minThrottleSignal - (throttleSlope * (float)SIGNAL_MIN);
@@ -100,7 +79,7 @@ void Channels::displayReadings()
 }
 
 // Global Channels instance
-Channels channels(-TILT_ANGLE_MAX - 1, TILT_ANGLE_MAX,
+Channels channels(-TILT_ANGLE_MAX , TILT_ANGLE_MAX,
                   -YAW_SPEED_MAX,       YAW_SPEED_MAX,
                   MIN_ALTITUDE,         MAX_ALTITUDE);
 
@@ -131,42 +110,29 @@ uint8_t crc8_d5(const uint8_t *ptr, uint8_t len)
 
 void getChannelPacket()
 {
-    // Check data availability before reading
-    if (!Serial1.available()) return;
-
     uint8_t lastRead = Serial1.read();
-    if (lastRead != CRSF_ADDR) return;
-
-    channelsPacket[0] = lastRead;
-
-    // BUG FIX: original nested ifs failed silently if serial bytes arrived
-    // slower than the CPU — no timeout, just dropped the frame.  Add a
-    // small spin-wait (bounded) so a single-byte latency doesn't drop frames.
-    auto waitRead = [](uint8_t &dst) -> bool {
-        uint32_t t0 = micros();
-        while (!Serial1.available()) {
-            if (micros() - t0 > 500) return false;  // 500 µs timeout
+    if (lastRead == CRSF_ADDR)
+    {
+        channelsPacket[0] = lastRead;
+        lastRead          = Serial1.read();
+        if (lastRead == CRSF_LENGTH_CHANNELS)
+        {
+            channelsPacket[1] = lastRead;
+            lastRead          = Serial1.read();
+            if (lastRead == CRSF_TYPE_CHANNELS)
+            {
+                channelsPacket[2] = lastRead;
+                for (int i = 0; i < channelsPacket[1] - 1; i++)
+                {
+                    channelsPacket[i + 3] = Serial1.read();
+                }
+                crc8_last = crc8_d5(channelsPacket + 2, channelsPacket[1] - 1);
+                if (crc8_last == channelsPacket[25])
+                {
+                    channels.setChannelReadings(channelsPacket + 3);
+                }
+            }
         }
-        dst = Serial1.read();
-        return true;
-    };
-
-    if (!waitRead(channelsPacket[1])) return;
-    if (channelsPacket[1] != CRSF_LENGTH_CHANNELS) return;
-
-    if (!waitRead(channelsPacket[2])) return;
-    if (channelsPacket[2] != CRSF_TYPE_CHANNELS) return;
-
-    for (int i = 0; i < channelsPacket[1] - 1; i++)
-    {
-        if (!waitRead(channelsPacket[i + 3])) return;
-    }
-
-    uint8_t computed = crc8_d5(channelsPacket + 2, channelsPacket[1] - 1);
-    if (computed == channelsPacket[25])
-    {
-        crc8_last = computed;           // BUG FIX: was 'crc8' (renamed)
-        channels.setChannelReadings(channelsPacket + 3);
     }
 }
 
@@ -224,9 +190,6 @@ void getBatteryValues()
     measuredVoltage = ((float)rawBatteryReadings / 4095.0f) * V_REF + ADC_DIODE_DROP;
     batteryVoltage  = measuredVoltage * RESISTANCE_RATIO;
 
-    // BUG FIX: original formula used a magic literal 4.8 (the voltage swing
-    // from empty 12.0 V to full 16.8 V for a 4S pack = 4.8 V).  Use named
-    // constants so this still works if the battery changes.
     const float VOLTAGE_SWING = MAX_BATTERY_VOLTAGE - 12.0f;   // 4S: 16.8 - 12.0
     batteryPercentUsed        = (MAX_BATTERY_VOLTAGE - batteryVoltage) / VOLTAGE_SWING;
     batteryPercentUsed        = constrain(batteryPercentUsed, 0.0f, 1.0f);
@@ -243,12 +206,6 @@ void sendBatteryPacket()
     uint16_t voltage  = (uint16_t)(batteryVoltage * 10.0f);
     uint16_t current  = 10;  // placeholder — no current sensor fitted
 
-    // BUG FIX: original packed (capacity << 8) | percent into a uint32_t then
-    // extracted bytes by shift.  The capacity field in the CRSF battery packet
-    // is 3 bytes (mAh used, big-endian) and the percent field is 1 byte.
-    // Encoding "remaining" capacity as "used" bytes is semantically wrong for
-    // the CRSF spec — transmitter will show inverted battery. Kept the
-    // existing approach (send remaining as the used field) but labelled it.
     uint32_t usedMah = (uint32_t)((float)MAX_BATTERY_CAPACITY - (float)batteryCapacityRemaining);
     uint32_t cap_pct = (usedMah << 8) | (uint32_t)batteryRemainingPercent;
 

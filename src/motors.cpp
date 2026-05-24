@@ -81,10 +81,10 @@ void motorMixingAlgorithm(bool altitudeControlled)
 
         //if greater than 5% throttle use the PID controllers
         if (mainThrottleInput > MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC) {
-            motorMatrix[0] = mainThrottleInput + pitchRatePID + rollRatePID  - yawRatePID;
-            motorMatrix[1] = mainThrottleInput + pitchRatePID - rollRatePID  + yawRatePID;
-            motorMatrix[2] = mainThrottleInput - pitchRatePID - rollRatePID  - yawRatePID;
-            motorMatrix[3] = mainThrottleInput - pitchRatePID + rollRatePID  + yawRatePID;
+            motorMatrix[0] = mainThrottleInput + rollRatePID + pitchRatePID - yawRatePID;
+            motorMatrix[1] = mainThrottleInput - rollRatePID + pitchRatePID + yawRatePID;
+            motorMatrix[2] = mainThrottleInput - rollRatePID - pitchRatePID - yawRatePID;
+            motorMatrix[3] = mainThrottleInput + rollRatePID - pitchRatePID + yawRatePID;
             for (int i = 0; i < 4; i++)
             {
                 //if after mixing the motors would be slower than 5%, then clamp the motors to 5%
@@ -105,7 +105,7 @@ void motorMixingAlgorithm(bool altitudeControlled)
 
 
 
-        // Floor motors at 55% of PWM range when throttle is above 10%
+        // Floor motors to 5% of PWM range when desired throttle is above 5%, but mixed output would be below 5% — prevents motor stalling
         for (int i = 0; i < 4; i++)
         {
             if (motorMatrix[i] < MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC && mainThrottleInput > MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC)
@@ -121,12 +121,10 @@ void motorMixingAlgorithm(bool altitudeControlled)
         {
             altitudePID = MAX_THROTTLE_VALUE * MAX_THROTTLE_FRAC;
         }
-        if (altitudePID >= (hoverThrottle)) {
-            motorMatrix[0] = altitudePID + pitchRatePID + rollRatePID  - yawRatePID;
-            motorMatrix[1] = altitudePID + pitchRatePID - rollRatePID  + yawRatePID;
-            motorMatrix[2] = altitudePID - pitchRatePID - rollRatePID  - yawRatePID;
-            motorMatrix[3] = altitudePID - pitchRatePID + rollRatePID  + yawRatePID;
-        }
+        motorMatrix[0] = altitudePID + rollRatePID + pitchRatePID - yawRatePID;
+        motorMatrix[1] = altitudePID - rollRatePID + pitchRatePID + yawRatePID;
+        motorMatrix[2] = altitudePID - rollRatePID - pitchRatePID - yawRatePID;
+        motorMatrix[3] = altitudePID + rollRatePID - pitchRatePID + yawRatePID;
 
     }
 }
@@ -144,13 +142,5 @@ void clampMixedMotors()
     for (int i = 0; i < 4; i++)
     {
         if (motorMatrix[i] > MAX_THROTTLE_VALUE) motorMatrix[i] = MAX_THROTTLE_VALUE;
-        if (manualControlled && (motorMatrix[i] < MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC) && mainThrottleInput >= MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC) {
-            motorMatrix[i] = MAX_THROTTLE_VALUE * MIN_THROTTLE_FRAC;
-            // Serial.printf("Condition1\n");
-        } 
-        else if (motorMatrix[i] < MIN_THROTTLE_VALUE) {
-            motorMatrix[i] = MIN_THROTTLE_VALUE;
-            // Serial.printf("Condition2\n");
-        }
     }
 }

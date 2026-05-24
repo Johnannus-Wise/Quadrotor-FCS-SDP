@@ -29,7 +29,7 @@ extern uint32_t rawPressure, rawTemp;
 extern float    pressure, temp, altitude, hoverAltitude;
 extern float    initialTemp, initialPressure;
 extern bool     altitudeLock;
-extern float    altitudeFromAccel, velocityZ, altitudeComplementaryAlpha;
+
 
 // ----- Receiver / CRSF -----
 extern uint8_t channelsPacket[26];
