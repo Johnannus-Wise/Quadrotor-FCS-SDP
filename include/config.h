@@ -11,6 +11,7 @@
 extern const char *ssid;
 extern const char *password;
 
+
 // ===== BMP388 =====
 #define BMP388ADDRESS   0x76
 #define I2C_SDA_PIN     21
@@ -42,10 +43,14 @@ extern float gyroBiasX, gyroBiasY, gyroBiasZ;  // estimated gyro bias
 #define CRSF_BAUD               416666
 
 // ===== Motor / PWM =====
-#define FRONT_LEFT_PIN  32  //M1 Green Wire
-#define FRONT_RIGHT_PIN 25  //M2 Red Wire
-#define REAR_RIGHT_PIN  26  //M3 Orange Wire
-#define REAR_LEFT_PIN   33  //M4 Yellow Wire
+// #define FRONT_LEFT_PIN  4   //M1 Green Wire
+// #define FRONT_RIGHT_PIN 5   //M2 Red Wire
+// #define REAR_RIGHT_PIN  12  //M3 Orange Wire
+// #define REAR_LEFT_PIN   13  //M4 Yellow Wire
+#define FRONT_LEFT_LED  32  //M1 Green Wire
+#define FRONT_RIGHT_LED 25  //M2 Red Wire
+#define REAR_RIGHT_LED  26  //M3 Orange Wire
+#define REAR_LEFT_LED   33  //M4 Yellow Wire
 #define FRONT_LEFT      1
 #define FRONT_RIGHT     2
 #define REAR_RIGHT      3
@@ -59,14 +64,16 @@ extern float gyroBiasX, gyroBiasY, gyroBiasZ;  // estimated gyro bias
 #define SIGNAL_MIN      174
 #define MIN_THROTTLE_FRAC   0.525f   // 5% throttle floor
 #define MAX_THROTTLE_FRAC   0.90f    // 80% throttle ceiling
+#define INTEGRATION_GATE_FRAC 0.6f   // fraction of throttle range above which the integral terms are active (20% throttle)
 
 // ===== Flight limits =====
-#define TILT_ANGLE_MAX      25
-#define YAW_SPEED_MAX       15
+#define TILT_ANGLE_MAX      10
+#define YAW_SPEED_MAX       10
 #define MIN_ALTITUDE        1
-#define MAX_ALTITUDE        30
-#define MAX_THROTTLE_VALUE  (PWM_RANGE - 1)
-#define MIN_THROTTLE_VALUE  ((PWM_RANGE / 2) - 1)
+#define MAX_ALTITUDE        20
+
+// #define MAX_THROTTLE_VALUE  (PWM_RANGE - 1)
+// #define MIN_THROTTLE_VALUE  ((PWM_RANGE / 2) - 1)
 
 // ===== Battery =====
 #define BATTERY_ADC_PIN     36

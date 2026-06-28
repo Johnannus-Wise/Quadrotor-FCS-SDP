@@ -62,7 +62,7 @@ class TelemetryLogger:
             self.csv_file = open(self.log_file, 'w', newline='')
             self.csv_writer = csv.DictWriter(
                 self.csv_file,
-                fieldnames=['timestamp', 'elapsed_s', 'temp_c', 'pressure_pa', 'altitude_m', 'pitch_deg', 'roll_deg', 'throttle']
+                fieldnames=['timestamp', 'elapsed_s', 'temp_c', 'pressure_pa', 'altitude_m', 'pitch_deg', 'roll_deg', 'throttle', 'throttle_percent', 'motor_fl', 'motor_fr', 'motor_rr', 'motor_rl']
             )
             self.csv_writer.writeheader()
             self.csv_file.flush()
@@ -128,6 +128,11 @@ class TelemetryLogger:
                             'pitch_deg': f"{telemetry.get('pitch_deg', 0):.2f}",
                             'roll_deg': f"{telemetry.get('roll_deg', 0):.2f}",
                             'throttle': f"{telemetry.get('throttle', 0):.0f}",
+                            'throttle_percent': f"{telemetry.get('throttle_percent', 0):.2f}",
+                            'motor_fl': f"{telemetry.get('motor_fl', 0):.0f}",
+                            'motor_fr': f"{telemetry.get('motor_fr', 0):.0f}",
+                            'motor_rr': f"{telemetry.get('motor_rr', 0):.0f}",
+                            'motor_rl': f"{telemetry.get('motor_rl', 0):.0f}",
                         }
                         self.csv_writer.writerow(row)
                         self.csv_file.flush()
@@ -141,7 +146,8 @@ class TelemetryLogger:
                                 f"Alt={telemetry.get('altitude_m', 0):7.2f}m  "
                                 f"Pitch={telemetry.get('pitch_deg', 0):6.2f}°  "
                                 f"Roll={telemetry.get('roll_deg', 0):6.2f}°  "
-                                f"Throttle={telemetry.get('throttle', 0):4.0f}"
+                                f"Throttle={telemetry.get('throttle', 0):4.0f}  "
+                                f"Motors=[{telemetry.get('motor_fl', 0):4.0f} {telemetry.get('motor_fr', 0):4.0f} {telemetry.get('motor_rr', 0):4.0f} {telemetry.get('motor_rl', 0):4.0f}]"
                             )
                         
                         last_fetch = current_time

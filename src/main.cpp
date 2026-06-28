@@ -6,69 +6,50 @@
 #include "receiver.h"
 #include "motors.h"
 #include "wifi_server.h"
-
-int printCounter = 0;
+#include "utils.h"
 
 // ============================================================
-//  update — sensor reads, telemetry, web client poll
-//  Called at the top of every loop iteration (armed and disarmed).
+//  update — sensor reads and comms, called every loop iteration
+//
+//    IMU  (Mahony)   : 3.2 kHz
+//    Barometer read  : 50 Hz
+//    CRSF rx + tx    : 250 Hz
+//    Web server      : 10 Hz
 // ============================================================
-
 static void update()
 {
-    currentTime  = (float)micros();
+    
+    currentTime = micros();
+
     deltaTime    = (currentTime - previousTime) / 1000000.0f;
     previousTime = currentTime;
-
-    // Guard against runaway deltaTime on first tick or after a long pause
-    if (deltaTime > 0.05f) deltaTime = 0.05f;   // cap at 50 ms (20 Hz minimum)
-
-    updateIMUReadings();
-    updateAltitudeReadings();
-    getChannelPacket();
-    sendAltitudePacket();
-    sendAttitudePacket();
-    sendBatteryPacket();
-
-    // if (currentTime > printCounter * 1000000) {
-
-
-    //     // Serial.print(printCounter);
-    //     Serial.print(">");
-
-    //     Serial.print("Temperature:");
-    //     Serial.print(temp);
-    //     Serial.print(",");
-
-    //     Serial.print("Pressure:");
-    //     Serial.print(pressure);
-    //     Serial.print(",");
-
-    //     Serial.print("Altitude:");
-    //     Serial.print(altitude);
-    //     Serial.print(",");
-
-    //     Serial.print("Pitch:");
-    //     Serial.print(pitch);
-    //     Serial.print(",");
-
-    //     Serial.print("Roll:");
-    //     Serial.print(roll);
-
-    //     Serial.println(); // Writes \r\n
-
-    //     // Serial.printf("Raw readings: %i, Measured voltage: %.2fV, Battery voltage: %.2fV, Used Percentage: %.2f%%, Remaining Percentage: %i%%\n", rawBatteryReadings, measuredVoltage, batteryVoltage, batteryPercentUsed * 100.0f, batteryRemainingPercent);
-    //     printCounter++;
-    // }
-    
-
-    // Service web clients at ~100 Hz (every 10 ms) without blocking the loop
-    static uint32_t lastWebHandle = 0;
-    uint32_t nowUs = (uint32_t)currentTime;
-    if (nowUs - lastWebHandle > 10000)
+    if (currentTime - imuUpdateLast >= IMU_UPDATE_US)
     {
+        imuUpdateLast = currentTime;
+        updateIMUReadings();
+        // Serial.printf("IMU Update — Pitch: %.2f°, Roll: %.2f°\n", pitch, roll);
+    }
+
+    updateAltitudeReadings();
+
+    // ── CRSF receive + telemetry transmit ─────────────────────────
+    if (currentTime - packetUpdateLast >= PACKET_UPDATE_US)
+    {
+        packetUpdateLast = currentTime;
+        getChannelPacket();
+    }
+
+    // ── Web server — 10 Hz ─────────────────────────────────────────────────
+    if (currentTime - webHandleLast >= WEB_HANDLE_US)
+    {
+        webHandleLast = currentTime;
         server.handleClient();
-        lastWebHandle = nowUs;
+    }
+
+    if (currentTime - flightUpdateLast >= FLIGHT_UPDATE_US)
+    {
+        flightUpdateLast = currentTime;
+        flightLog();
     }
 }
 
@@ -93,18 +74,27 @@ void setup()
 
     ICM45686_Init();
 
-    // Configure PWM channels
     ledcSetup(FRONT_LEFT,  PWM_FREQUENCY, PWM_RESOLUTION);
     ledcSetup(FRONT_RIGHT, PWM_FREQUENCY, PWM_RESOLUTION);
     ledcSetup(REAR_RIGHT,  PWM_FREQUENCY, PWM_RESOLUTION);
     ledcSetup(REAR_LEFT,   PWM_FREQUENCY, PWM_RESOLUTION);
 
-    ledcAttachPin(FRONT_LEFT_PIN,  FRONT_LEFT);
-    ledcAttachPin(FRONT_RIGHT_PIN, FRONT_RIGHT);
-    ledcAttachPin(REAR_RIGHT_PIN,  REAR_RIGHT);
-    ledcAttachPin(REAR_LEFT_PIN,   REAR_LEFT);
+    // ledcAttachPin(FRONT_LEFT_PIN,  FRONT_LEFT);
+    ledcAttachPin(FRONT_LEFT_LED,  FRONT_LEFT);
 
-    // Start motors at zero
+    // ledcAttachPin(FRONT_RIGHT_PIN, FRONT_RIGHT);
+    ledcAttachPin(FRONT_RIGHT_LED, FRONT_RIGHT);
+
+    // ledcAttachPin(REAR_RIGHT_PIN,  REAR_RIGHT);
+    ledcAttachPin(REAR_RIGHT_LED,  REAR_RIGHT);
+
+    // ledcAttachPin(REAR_LEFT_PIN,   REAR_LEFT);
+    ledcAttachPin(REAR_LEFT_LED,   REAR_LEFT);
+    
+    
+    
+    
+
     ledcWrite(FRONT_LEFT,  0);
     ledcWrite(FRONT_RIGHT, 0);
     ledcWrite(REAR_RIGHT,  0);
@@ -115,7 +105,20 @@ void setup()
 
     PIDWebPage();
 
-    previousTime = (float)micros();
+    // Seed all timestamps so no timer fires immediately on first tick
+    currentTime            = micros();
+    attitudeLoopLast   = currentTime;
+    altitudeLoopLast   = currentTime;
+    packetUpdateLast   = currentTime;
+    webHandleLast      = currentTime;
+    imuUpdateLast        = currentTime;
+    previousTime        = currentTime;
+    Serial.printf("ATTITUDE_UPDATE_RATE: %lu\n", ATTITUDE_UPDATE_RATE);
+    Serial.printf("ALTITUDE_UPDATE_RATE: %lu\n", ALTITUDE_UPDATE_RATE);
+    Serial.printf("PACKET_UPDATE_RATE: %lu\n", PACKET_UPDATE_RATE);
+    Serial.printf("WEB_HANDLE_UPDATE_RATE: %lu\n", WEB_HANDLE_UPDATE_RATE);
+    Serial.printf("IMU_UPDATE_RATE: %lu\n", IMU_UPDATE_RATE);
+    update();
 }
 
 // ============================================================
@@ -124,14 +127,13 @@ void setup()
 
 void loop()
 {
-    update();
-
     // --------------------------------------------------------
     //  ARMED  (ch[4] low)
     // --------------------------------------------------------
     if (channels.ch[4].data < 900)
     {
         Serial.println("ARMED");
+        resetControllers(); //Executed once on arming.
         // Renew the reference pressure baseline when armed
         // This establishes current altitude as 0 m for this flight
         // renewReferencePressure(INIT_SAMPLE_SIZE);
@@ -140,24 +142,28 @@ void loop()
             update();
             if (channels.ch[4].data > 900) break;   // disarm
 
-            movement();
-
             // ch[6] low → direct throttle pass-through (test / spin-up)
             if (channels.ch[6].data < 900)
             {
+                // Serial.println("Direct Throttle Mode");
                 ledcWrite(FRONT_LEFT,  mainThrottleInput);
                 ledcWrite(FRONT_RIGHT, mainThrottleInput);
                 ledcWrite(REAR_RIGHT,  mainThrottleInput);
                 ledcWrite(REAR_LEFT,   mainThrottleInput);
             }
+            else if (channels.ch[6].data > 900)
+            {
+                // Serial.println("Flight Control Mode");
+                movement();
+            }
         }
         // Reset all PID controllers when transitioning to disarmed
-        rollAngleController.reset();
-        pitchAngleController.reset();
-        rollRateController.reset();
-        pitchRateController.reset();
-        yawRateController.reset();
-        altitudeController.reset();
+        // rollAngleController.reset();
+        // pitchAngleController.reset();
+        // rollRateController.reset();
+        // pitchRateController.reset();
+        // yawRateController.reset();
+        // altitudeController.reset();
     }
     // --------------------------------------------------------
     //  DISARMED  (ch[4] high)

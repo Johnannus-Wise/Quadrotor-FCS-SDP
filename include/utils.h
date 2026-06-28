@@ -10,3 +10,7 @@
 // Linear mapping helpers used by Channels::setDutyCycle and rescale()
 float calSlope(float y2, float y1, float x2, float x1);
 float calYIntercept(float slope, float x, float y);
+
+//debugging helpers
+void flightLog();
+void flightLog(bool plot);

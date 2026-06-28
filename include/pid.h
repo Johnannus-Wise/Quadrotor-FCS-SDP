@@ -45,8 +45,16 @@ struct PIDController
             derivativeTermRaw      = -(feedback - previousFeedbackState) / dt;
             derivativeTermFiltered = derivativeFilterAlpha * derivativeTermFiltered
                                    + (1.0f - derivativeFilterAlpha) * derivativeTermRaw;
-
-            integralTerm += error * dt;
+            // Integral bounds — prevent windup in long-term error situations (e.g. takeoff). Currently set to +/- ~5% throttle.
+            if (integralTerm <= 50.0f && integralTerm >= -50.0f) {
+                integralTerm += error * dt;
+            } 
+            if (integralTerm > 50.0f) {
+                integralTerm = 50.0f;
+            } else if (integralTerm < -50.0f) {
+                integralTerm = -50.0f;
+            }
+            
 
             PID_output = (Kp * error)
                        + (Ki * integralTerm)

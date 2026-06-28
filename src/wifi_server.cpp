@@ -40,6 +40,11 @@ function updateTelemetry() {
       document.getElementById('pitch').innerText       = d.pitch_deg.toFixed(2);
       document.getElementById('roll').innerText        = d.roll_deg.toFixed(2);
       document.getElementById('throttle').innerText    = d.throttle.toFixed(0);
+      document.getElementById('throttle_percent').innerText = d.throttle_percent.toFixed(2);
+      document.getElementById('motor_fl').innerText    = d.motor_fl.toFixed(0);
+      document.getElementById('motor_fr').innerText    = d.motor_fr.toFixed(0);
+      document.getElementById('motor_rr').innerText    = d.motor_rr.toFixed(0);
+      document.getElementById('motor_rl').innerText    = d.motor_rl.toFixed(0);
     });
 }
 
@@ -121,6 +126,13 @@ setInterval(updateTelemetry, 300);
 <p>Pitch: <span id="pitch">0</span> &deg;</p>
 <p>Roll: <span id="roll">0</span> &deg;</p>
 <p>Throttle: <span id="throttle">0</span></p>
+<p>Throttle_Percent: <span id="throttle_percent">0</span>%</p>
+
+<h3>Motor Outputs</h3>
+<p>Front Left: <span id="motor_fl">0</span></p>
+<p>Front Right: <span id="motor_fr">0</span></p>
+<p>Rear Right: <span id="motor_rr">0</span></p>
+<p>Rear Left: <span id="motor_rl">0</span></p>
 </body>
 </html>
 )rawliteral";
@@ -220,12 +232,15 @@ void handleUpdate()
 
 void handleTelemetry()
 {
+    // Calculate throttle percentage: ((mainThrottleInput/MAX_THROTTLE_VALUE) - 0.5) * 100
+    throttlePercentage = (((float)mainThrottleInput / (float)MIN_THROTTLE_VALUE )- 1.0f) * 100.0f;
+    
     // BUG FIX: original built a String by concatenation in a tight hot-path.
     // Use snprintf into a stack buffer to avoid heap fragmentation.
-    char buf[256];
+    char buf[512];
     snprintf(buf, sizeof(buf),
-             "{\"temperature_c\":%.2f,\"pressure_pa\":%.2f,\"altitude_m\":%.2f,\"pitch_deg\":%.2f,\"roll_deg\":%.2f,\"throttle\":%d}",
-             temp, pressure, altitude, pitch, roll, mainThrottleInput);
+             "{\"temperature_c\":%.2f,\"pressure_pa\":%.2f,\"altitude_m\":%.2f,\"pitch_deg\":%.2f,\"roll_deg\":%.2f,\"throttle\":%d,\"throttle_percent\":%.2f,\"motor_fl\":%d,\"motor_fr\":%d,\"motor_rr\":%d,\"motor_rl\":%d}",
+             temp, pressure, altitude, pitch, roll, mainThrottleInput, throttlePercentage, motorMatrix[0], motorMatrix[1], motorMatrix[2], motorMatrix[3]);
     server.send(200, "application/json", buf);
 }
 
@@ -243,10 +258,10 @@ void PIDWebPage()
     delay(100);
 
     // Set static IP to 192.168.100.19
-    IPAddress staticIP(192, 168, 100, 19);
-    IPAddress gateway(192, 168, 100, 1);
-    IPAddress subnet(255, 255, 255, 0);
-    WiFi.config(staticIP, gateway, subnet);
+    // IPAddress staticIP(192, 168, 100, 19);
+    // IPAddress gateway(192, 168, 100, 1);
+    // IPAddress subnet(255, 255, 255, 0);
+    // WiFi.config(staticIP, gateway, subnet);
 
     WiFi.begin(ssid, password);
     WiFi.setSleep(false);

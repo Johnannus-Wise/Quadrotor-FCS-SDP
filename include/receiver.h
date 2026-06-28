@@ -57,4 +57,5 @@ void    sendAltitudePacket();
 void    sendAttitudePacket();
 void    sendBatteryPacket();
 void    getBatteryValues();
+void    sendTelemetryPackets();
 uint8_t crc8_d5(const uint8_t *ptr, uint8_t len);

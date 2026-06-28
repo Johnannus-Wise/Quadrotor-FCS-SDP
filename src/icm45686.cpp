@@ -29,7 +29,7 @@ void ICM45686_Init()
     delay(10);
 
     // Accel AAF enable, interpolator disabled
-    I2CWriteIREG(0x7B, 0xA400, 0x01);
+    I2CWriteIREG(0x7B, 0xA500, 0x01);
     delay(10);
 
     // Accel config: ±4 g, 3.2 kHz ODR
@@ -98,6 +98,11 @@ void updateIMUReadings()
     accelY =  (float)rawAccelY * GRAVITY / ACCEL_SENSITIVITY;
     accelZ =  (float)rawAccelZ * GRAVITY / ACCEL_SENSITIVITY;
 
+    // Apply LPF:
+    accelX_filtered += ACCEL_LPF_ALPHA * (accelX - accelX_filtered);
+    accelY_filtered += ACCEL_LPF_ALPHA * (accelY - accelY_filtered);
+    accelZ_filtered += ACCEL_LPF_ALPHA * (accelZ - accelZ_filtered);
+
     // Gyro in deg/s — kept in deg/s for the PID rate controllers at the end.
     // A separate rad/s copy is used internally for the quaternion integration.
     gyroX =  (float)rawGyroX / GYRO_SENSITIVITY;
@@ -109,26 +114,35 @@ void updateIMUReadings()
     // 1. Normalise the accelerometer reading.
     //    If norm is zero (sensor fault / free-fall) skip the correction step
     //    entirely — the quaternion will coast on gyro alone this cycle.
-    float norm = sqrtf(accelX*accelX + accelY*accelY + accelZ*accelZ);
+    float norm = sqrtf(accelX_filtered*accelX_filtered + accelY_filtered*accelY_filtered + accelZ_filtered*accelZ_filtered);
     if (norm == 0.0f) return;
-    float ax = accelX / norm;
-    float ay = accelY / norm;
-    float az = accelZ / norm;
 
-    // 2. Estimated gravity direction in body frame derived from the quaternion.
-    //    This is the third column of the rotation matrix built from q.
-    //    It answers: "given our current estimated orientation,
-    //    which direction should gravity be pointing in sensor coordinates?"
-    float vx = 2.0f * (q1*q3 - q0*q2);
-    float vy = 2.0f * (q0*q1 + q2*q3);
-    float vz = q0*q0 - q1*q1 - q2*q2 + q3*q3;
+    // Gate: only apply correction if |a| is within ±15% of 1g
+    // Tune the threshold based on your vibration severity
+    float deviation = fabsf(norm - GRAVITY);
+    bool accelTrustworthy = (deviation < 0.15f * GRAVITY);
 
-    // 3. Cross product error: accel_measured × accel_expected.
-    //    Direction = axis of rotation needed to align the two vectors.
-    //    Magnitude ≈ sin(angle between them), so small errors stay small.
-    float ex = (ay*vz - az*vy);
-    float ey = (az*vx - ax*vz);
-    float ez = (ax*vy - ay*vx);
+    float ax = accelX_filtered / norm;
+    float ay = accelY_filtered / norm;
+    float az = accelZ_filtered / norm;
+
+    float ex = 0.0f, ey = 0.0f, ez = 0.0f;
+    if (accelTrustworthy) {
+        // 2. Estimated gravity direction in body frame derived from the quaternion.
+        //    This is the third column of the rotation matrix built from q.
+        //    It answers: "given our current estimated orientation,
+        //    which direction should gravity be pointing in sensor coordinates?"
+        float vx = 2.0f * (q1*q3 - q0*q2);
+        float vy = 2.0f * (q0*q1 + q2*q3);
+        float vz = q0*q0 - q1*q1 - q2*q2 + q3*q3;
+
+        // 3. Cross product error: accel_measured × accel_expected.
+        //    Direction = axis of rotation needed to align the two vectors.
+        //    Magnitude ≈ sin(angle between them), so small errors stay small.
+        ex = (ay*vz - az*vy);
+        ey = (az*vx - ax*vz);
+        ez = (ax*vy - ay*vx);
+    }
 
     // 4. PI controller on the error.
     //    Integral accumulates the gyro bias estimate over time.
@@ -142,11 +156,10 @@ void updateIMUReadings()
     float gz = gyroZ * (PI / 180.0f) + MAHONY_KP * ez + gyroBiasZ;
 
     // 5. Integrate the quaternion derivative: q̇ = 0.5 * q ⊗ [0, gx, gy, gz]
-    float dt = deltaTime;
-    q0 += 0.5f * (-q1*gx - q2*gy - q3*gz) * dt;
-    q1 += 0.5f * ( q0*gx + q2*gz - q3*gy) * dt;
-    q2 += 0.5f * ( q0*gy - q1*gz + q3*gx) * dt;
-    q3 += 0.5f * ( q0*gz + q1*gy - q2*gx) * dt;
+    q0 += 0.5f * (-q1*gx - q2*gy - q3*gz) * deltaTime;
+    q1 += 0.5f * ( q0*gx + q2*gz - q3*gy) * deltaTime;
+    q2 += 0.5f * ( q0*gy - q1*gz + q3*gx) * deltaTime;
+    q3 += 0.5f * ( q0*gz + q1*gy - q2*gx) * deltaTime;
 
     // 6. Renormalise the quaternion to prevent numerical drift.
     norm = sqrtf(q0*q0 + q1*q1 + q2*q2 + q3*q3);

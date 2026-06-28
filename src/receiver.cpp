@@ -1,6 +1,5 @@
 #include "receiver.h"
 #include "globals.h"
-
 // ============================================================
 //  Channels — constructor & methods
 // ============================================================
@@ -36,6 +35,7 @@ void Channels::setChannelReadings(uint8_t refData[22])
     ch[13].data = (refData[17] >> 7) | (refData[18] << 1) | (refData[19] << 9);
     ch[14].data = (refData[19] >> 2) | (refData[20] << 6);
     ch[15].data = (refData[20] >> 5) | (refData[21] << 3);
+    // displayReadings();
     rescale();
 }
 
@@ -44,10 +44,15 @@ void Channels::rescale()
     mainThrottleInput = (int)(throttleSlope * (float)ch[2].data + throttleIntercept);
     
     desiredRoll  = (int)(angleSlope * (float)ch[0].data + angleIntercept);
-    desiredPitch = (int)(angleSlope * (float)ch[1].data + angleIntercept);
+    desiredPitch = -((int)(angleSlope * (float)ch[1].data + angleIntercept));
 
     yawSpeed       = (int)(yawSlope      * (float)ch[3].data + yawIntercept);
     desiredAltitude = (int)(altitudeSlope * (float)ch[2].data + altitudeIntercept);
+
+    // Serial.printf("Rescaled: Throttle %i, Desired Roll %i°, Desired Pitch %i°, Yaw Speed %i°/s, Desired Altitude %i m\n",
+    //               mainThrottleInput, desiredRoll, desiredPitch, yawSpeed, desiredAltitude);
+    // Serial.printf("angleSlope: %.3f, angleIntercept: %.3f, yawSlope: %.3f, yawIntercept: %.2f, altitudeSlope: %.3f, altitudeIntercept: %.2f\n",
+    //               angleSlope, angleIntercept, yawSlope, yawIntercept, altitudeSlope, altitudeIntercept);
 }
 
 void Channels::setDutyCycle(int desiredFrequency, int desiredResolution)
@@ -59,17 +64,17 @@ void Channels::setDutyCycle(int desiredFrequency, int desiredResolution)
     int   range             = (1 << desiredResolution);   // BUG FIX: pow() → bit shift
     float minDuty           = 0.001f / period;
     float maxDuty           = 0.002f / period;
-    float minThrottleSignal = (float)range * minDuty - 1;
-    float maxThrottleSignal = (float)range * maxDuty - 1;
+    MIN_THROTTLE_VALUE = (float)range * minDuty - 1;
+    MAX_THROTTLE_VALUE = (float)range * maxDuty - 1;
 
-    throttleSlope     = (maxThrottleSignal - minThrottleSignal) / (float)(SIGNAL_MAX - SIGNAL_MIN);
-    throttleIntercept = minThrottleSignal - (throttleSlope * (float)SIGNAL_MIN);
+    throttleSlope     = (MAX_THROTTLE_VALUE - MIN_THROTTLE_VALUE) / (float)(SIGNAL_MAX - SIGNAL_MIN);
+    throttleIntercept = MIN_THROTTLE_VALUE - (throttleSlope * (float)SIGNAL_MIN);
 }
 
 void Channels::displayReadings()
 {
     Serial.printf("ch0: %i ch1: %i ch2: %i ch3: %i ",
-                  desiredRoll, desiredPitch, ch[2].data, yawSpeed);
+                  ch[0].data, ch[1].data, ch[2].data, ch[3].data);
     Serial.printf("ch4: %i ch5: %i ch6: %i ch7: %i ",
                   ch[4].data, ch[5].data, ch[6].data, ch[7].data);
     Serial.printf("ch8: %i ch9: %i ch10: %i ch11: %i ",
@@ -108,32 +113,89 @@ uint8_t crc8_d5(const uint8_t *ptr, uint8_t len)
 //  Packet receive
 // ============================================================
 
+// Static state machine for non-blocking packet reception
+static struct {
+    uint8_t  state;        // 0: waiting for sync, 1: reading packet
+    uint8_t  idx;          // index into channelsPacket
+    uint32_t lastByteTime; // micros() of last successful byte read
+} rxState = {0, 0, 0};
+
+#define RX_TIMEOUT_US 3000  // 3ms timeout for full packet (handles slow serial + jitter)
+
+
+// Reads bytes from Serial1 and assembles CRSF channel packets.  Non-blocking and robust to desync.
+// After setting the channel readings, it calls sendTelemetryPackets() to transmit telemetry back to the transmitter (round-robin).
 void getChannelPacket()
 {
-    uint8_t lastRead = Serial1.read();
-    if (lastRead == CRSF_ADDR)
+    while (Serial1.available())
     {
-        channelsPacket[0] = lastRead;
-        lastRead          = Serial1.read();
-        if (lastRead == CRSF_LENGTH_CHANNELS)
+        uint8_t byte = Serial1.read();
+        uint32_t now = micros();
+        
+        // State 0: Waiting for CRSF_ADDR sync byte
+        if (rxState.state == 0)
         {
-            channelsPacket[1] = lastRead;
-            lastRead          = Serial1.read();
-            if (lastRead == CRSF_TYPE_CHANNELS)
+            if (byte == CRSF_ADDR)
             {
-                channelsPacket[2] = lastRead;
-                for (int i = 0; i < channelsPacket[1] - 1; i++)
+                rxState.state = 1;
+                rxState.idx = 0;
+                channelsPacket[rxState.idx++] = byte;
+                rxState.lastByteTime = now;
+            }
+        }
+        // State 1: Receiving packet bytes
+        else if (rxState.state == 1)
+        {
+            channelsPacket[rxState.idx++] = byte;
+            rxState.lastByteTime = now;
+            
+            // After reading length byte, validate it
+            if (rxState.idx == 2)
+            {
+                if (channelsPacket[1] != CRSF_LENGTH_CHANNELS)
                 {
-                    channelsPacket[i + 3] = Serial1.read();
+                    // Invalid length, resync
+                    rxState.state = 0;
+                    rxState.idx = 0;
                 }
-                crc8_last = crc8_d5(channelsPacket + 2, channelsPacket[1] - 1);
-                if (crc8_last == channelsPacket[25])
+            }
+            // After reading type byte, validate it
+            else if (rxState.idx == 3)
+            {
+                if (channelsPacket[2] != CRSF_TYPE_CHANNELS)
                 {
+                    // Invalid type, resync
+                    rxState.state = 0;
+                    rxState.idx = 0;
+                }
+            }
+            // Check if we have a complete packet (26 bytes total)
+            else if (rxState.idx >= 26)
+            {
+                uint8_t computed = crc8_d5(channelsPacket + 2, channelsPacket[1] - 1);
+                if (computed == channelsPacket[25])
+                {
+                    crc8_last = computed;
                     channels.setChannelReadings(channelsPacket + 3);
                 }
+                // Reset for next packet regardless of CRC result
+                rxState.state = 0;
+                rxState.idx = 0;
             }
         }
     }
+    
+    // Timeout: reset if no bytes received for too long
+    if (rxState.state == 1)
+    {
+        uint32_t now = micros();
+        if (now - rxState.lastByteTime > RX_TIMEOUT_US)
+        {
+            rxState.state = 0;
+            rxState.idx = 0;
+        }
+    }
+    sendTelemetryPackets();
 }
 
 // ============================================================
@@ -206,8 +268,8 @@ void sendBatteryPacket()
     uint16_t voltage  = (uint16_t)(batteryVoltage * 10.0f);
     uint16_t current  = 10;  // placeholder — no current sensor fitted
 
-    uint32_t usedMah = (uint32_t)((float)MAX_BATTERY_CAPACITY - (float)batteryCapacityRemaining);
-    uint32_t cap_pct = (usedMah << 8) | (uint32_t)batteryRemainingPercent;
+    uint32_t batteryCurrentCapacity = (uint32_t)(batteryCapacityRemaining);
+    uint32_t cap_pct = (batteryCurrentCapacity << 8) | (uint32_t)batteryRemainingPercent;
 
     pkt[0]  = CRSF_SENSOR;
     pkt[1]  = 0x0A;
@@ -223,4 +285,20 @@ void sendBatteryPacket()
     pkt[11] = crc8_d5(pkt + 2, 9);
 
     Serial1.write(pkt, 12);
+}
+
+void sendTelemetryPackets()
+{
+    if (telemetrySelector == 0) {
+        sendAttitudePacket();
+        telemetrySelector = 1;
+    }
+    else if (telemetrySelector == 1) {
+        sendAltitudePacket();
+        telemetrySelector = 2;
+    }
+    else if (telemetrySelector == 2) {
+        sendBatteryPacket();
+        telemetrySelector = 0;
+    }
 }
