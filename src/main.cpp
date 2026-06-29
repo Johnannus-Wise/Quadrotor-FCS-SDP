@@ -90,10 +90,6 @@ void setup()
 
     // ledcAttachPin(REAR_LEFT_PIN,   REAR_LEFT);
     ledcAttachPin(REAR_LEFT_LED,   REAR_LEFT);
-    
-    
-    
-    
 
     ledcWrite(FRONT_LEFT,  0);
     ledcWrite(FRONT_RIGHT, 0);

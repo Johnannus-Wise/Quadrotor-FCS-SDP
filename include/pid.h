@@ -26,15 +26,8 @@ struct PIDController
     PIDController(float kp, float ki, float kd, float tol)
         : Kp(kp), Ki(ki), Kd(kd), tolerance(tol) {}
 
-    // BUG FIX: removed unused parameters (integralMax/Min, integralStartPoint,
-    //          maxActuatorOutput, currentActuatorInput) that were declared but
-    //          never applied — they were misleading and wasted memory.
-
     float compute(float reference, float feedback, float dt)
     {
-        // Guard against zero / negative dt (first call after long pause)
-        // BUG FIX: original code had no dt guard; a zero dt makes the
-        //          integral and derivative terms blow up on the first tick.
         if (dt <= 0.0f) return PID_output;
 
         error = reference - feedback;

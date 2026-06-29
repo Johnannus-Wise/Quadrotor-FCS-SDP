@@ -3,8 +3,8 @@
 #include <esp_wifi.h>
 
 // Wi-Fi credentials — defined here, declared extern in config.h
-const char *ssid     = "Hakeem_2.4GHz";
-const char *password = "19641964";
+const char *ssid     = "SSDI";
+const char *password = "Password";
 
 WebServer server(80);
 
